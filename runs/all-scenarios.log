@@ -1,0 +1,828 @@
+DynamicProducerConsumerHub prototype
+Single in-process ActorSystem. StreamRefs only -- NO Akka.Remote, NO Akka.Cluster.
+Akka.Streams 1.5.70.0
+Running scenarios: 1, 2, 3, 4, 5, 6, 7, 8
+
+====================================================================================================
+SCENARIO 1 -- BASELINE, ABRUPT CONSUMER DEATH
+Pipeline: MergeHub -> PartitionHub(round-robin) -> [per-link] -> StreamRef -> consumer
+Consumer B calls Context.Stop(Self) mid-stream. No stream completion is ever sent.
+CAVEAT: in-process DeathWatch is instant. This is the framework's BEST case, not what a
+        real pod death across a network looks like.
+====================================================================================================
+[T+  0.209s] [21:42:03.651] [C/B           ] requested a stream from the hub
+[T+  0.207s] [21:42:03.650] [C/C           ] requested a stream from the hub
+[T+  0.207s] [21:42:03.651] [C/A           ] requested a stream from the hub
+[T+  0.317s] [21:42:03.757] [HUB           ] MergeHub->PartitionHub materialized. mode=Baseline mergeHubPerProducerBuffer=4 partitionHubBuffer=8 (AGGREGATE across all consumers) startAfterNrOfConsumers=3
+[T+  0.350s] [21:42:03.790] [HUB           ] materialized per-consumer link for A at T+0.337s
+[T+  0.357s] [21:42:03.797] [HUB           ] materialized per-consumer link for C at T+0.356s
+[T+  0.357s] [21:42:03.797] [HUB           ] materialized per-consumer link for B at T+0.357s
+[T+  0.365s] [21:42:03.805] [C/C           ] received SourceRef from hub, materializing consumer-side stream
+[T+  0.367s] [21:42:03.807] [C/A           ] received SourceRef from hub, materializing consumer-side stream
+[T+  0.374s] [21:42:03.814] [C/B           ] received SourceRef from hub, materializing consumer-side stream
+[T+  0.378s] [21:42:03.818] [HARNESS       ] consumer B is attached (1/3)
+[T+  0.379s] [21:42:03.819] [HARNESS       ] consumer C is attached (2/3)
+[T+  0.379s] [21:42:03.819] [HARNESS       ] consumer A is attached (3/3)
+[T+  0.379s] [21:42:03.819] [HARNESS       ] all consumers attached
+[T+  0.415s] [21:42:03.855] [PRODUCER      ] attached to MergeHub, target rate = 30 items/sec
+[T+  0.416s] [21:42:03.856] [HARNESS       ] >>> steady state with 3 healthy consumers (waiting 4.0s)
+[T+  0.417s] [21:42:03.857] [HUB/PARTITION ] *** PartitionHub registered-consumer count is now 3 (was -1) ***
+[T+  1.387s] [21:42:04.827] [SAMPLE        ] produced=  29(+29)  processed[A:  10(+10)  B:   9(+ 9)  C:   9(+ 9)]
+[T+  2.388s] [21:42:05.828] [SAMPLE        ] produced=  59(+30)  processed[A:  20(+10)  B:  19(+10)  C:  19(+10)]
+[T+  3.389s] [21:42:06.829] [SAMPLE        ] produced=  89(+30)  processed[A:  30(+10)  B:  29(+10)  C:  29(+10)]
+[T+  4.389s] [21:42:07.829] [SAMPLE        ] produced= 119(+30)  processed[A:  40(+10)  B:  39(+10)  C:  39(+10)]
+[T+  4.415s] [21:42:07.856] [HARNESS       ] *** KILLING consumer B at T+4.415s ***
+[T+  4.416s] [21:42:07.856] [HARNESS       ] >>> observing how the hub reacts to the abrupt death (waiting 8.0s)
+[T+  4.416s] [21:42:07.856] [C/B           ] ### Context.Stop(Self) -- abrupt death, no stream completion ###
+[T+  4.426s] [21:42:07.866] [C/B           ] actor PostStop
+[T+  4.429s] [21:42:07.869] [HUB/LINK-DEAD ] link[B] FAILED at T+4.429s :: Akka.Streams.RemoteStreamRefActorTerminatedException: "Remote target receiver of data terminated. Local stream terminating, message loss (on remote side) may have happened."
+[T+  4.429s] [21:42:07.870] [C/B/DEAD      ] consumer stream FAILED at T+4.425s :: Akka.Streams.AbruptStageTerminationException: "GraphStage Akka.Streams.Implementation.Fusing.TerminationWatcher`1+Logic[HubProto.Work] terminated abruptly, caused by for example materializer or actor system termination."
+[T+  4.432s] [21:42:07.872] [HUB/PARTITION ] *** PartitionHub registered-consumer count is now 2 (was 3) ***
+[T+  5.390s] [21:42:08.830] [SAMPLE        ] produced= 149(+30)  processed[A:  54(+14)  B:  40(+ 1)  C:  54(+15)]
+[T+  6.390s] [21:42:09.830] [SAMPLE        ] produced= 179(+30)  processed[A:  69(+15)  B:  40(+ 0)  C:  69(+15)]
+[T+  7.391s] [21:42:10.831] [SAMPLE        ] produced= 209(+30)  processed[A:  84(+15)  B:  40(+ 0)  C:  84(+15)]
+[T+  8.391s] [21:42:11.831] [SAMPLE        ] produced= 240(+31)  processed[A:  99(+15)  B:  40(+ 0)  C:  99(+15)]
+[T+  9.391s] [21:42:12.831] [SAMPLE        ] produced= 270(+30)  processed[A: 114(+15)  B:  40(+ 0)  C: 114(+15)]
+[T+ 10.392s] [21:42:13.832] [SAMPLE        ] produced= 300(+30)  processed[A: 129(+15)  B:  40(+ 0)  C: 129(+15)]
+[T+ 11.393s] [21:42:14.833] [SAMPLE        ] produced= 330(+30)  processed[A: 144(+15)  B:  40(+ 0)  C: 144(+15)]
+[T+ 12.393s] [21:42:15.834] [SAMPLE        ] produced= 360(+30)  processed[A: 160(+16)  B:  40(+ 0)  C: 159(+15)]
+[T+ 12.418s] [21:42:15.858] [PRODUCER      ] stopped. 361 items accepted into the MergeHub.
+[T+ 12.418s] [21:42:15.858] [HARNESS       ] >>> settling (waiting 2.0s)
+[T+ 13.393s] [21:42:16.833] [SAMPLE        ] produced= 361(+ 1)  processed[A: 161(+ 1)  B:  40(+ 0)  C: 160(+ 1)]
+[T+ 14.393s] [21:42:17.833] [SAMPLE        ] produced= 361(+ 0)  processed[A: 161(+ 0)  B:  40(+ 0)  C: 160(+ 0)]
+
+--- REPORT :: Scenario 1 -- baseline, abrupt death -------------------------------------------------
+  Produced (accepted into MergeHub) : 361
+  Processed (all consumer sinks)    : 361
+  LOST                              : 0
+
+  consumer    link-emitted  arrived  processed  hb-injected  hb-received
+  A                    161      161        161            0            0
+  B                     40       40         40            0            0
+  C                    160      160        160            0            0
+
+  Element-loss breakdown:
+    -    0 never left the hub (dropped from a PartitionHub per-consumer queue on deregistration, or still queued at shutdown): (none)
+
+  Partitioner input check: 361 Work items, 0 Heartbeats (PASS -- heartbeats never crossed the partitioner)
+
+  PartitionHub registered-consumer count timeline (read straight out of the partitioner's `size` arg):
+    T+  0.417s -> 3 consumers
+    T+  4.432s -> 2 consumers
+
+  Hub-side link terminations:
+    T+  4.429s link[B] failed=True :: Akka.Streams.RemoteStreamRefActorTerminatedException: "Remote target receiver of data terminated. Local stream terminating, message loss (on remote side) may have happened."
+
+  Consumer-side stream terminations:
+    T+  4.425s consumer[B] failed=True :: Akka.Streams.AbruptStageTerminationException: "GraphStage Akka.Streams.Implementation.Fusing.TerminationWatcher`1+Logic[HubProto.Work] terminated abruptly, caused by for example materializer or actor system termination."
+
+  Producer worst backpressure stall: 0.014s (Work#1, offered at T+0.400s)
+
+  Consumer B was killed at T+4.415s
+  Hub-side link[B] died at T+4.429s => 0.013s after the event
+  PartitionHub slot freed (count -> 2) at T+4.432s => 0.016s after the event
+[T+ 14.468s] [21:42:17.908] [HUB/LINK-DEAD ] link[C] FAILED at T+14.468s :: Akka.Streams.AbruptStageTerminationException: "GraphStage Akka.Streams.Implementation.Fusing.TerminationWatcher`1+Logic[HubProto.IHubEnvelope] terminated abruptly, caused by for example materializer or actor system termination."
+[T+ 14.468s] [21:42:17.908] [C/A           ] actor PostStop
+[T+ 14.468s] [21:42:17.908] [C/A/DEAD      ] consumer stream FAILED at T+14.468s :: Akka.Streams.AbruptStageTerminationException: "GraphStage Akka.Streams.Implementation.Fusing.TerminationWatcher`1+Logic[HubProto.Work] terminated abruptly, caused by for example materializer or actor system termination."
+[T+ 14.468s] [21:42:17.908] [C/C/DEAD      ] consumer stream FAILED at T+14.468s :: Akka.Streams.AbruptStageTerminationException: "GraphStage Akka.Streams.Implementation.Fusing.TerminationWatcher`1+Logic[HubProto.Work] terminated abruptly, caused by for example materializer or actor system termination."
+[T+ 14.468s] [21:42:17.908] [HUB/LINK-DEAD ] link[A] FAILED at T+14.468s :: Akka.Streams.AbruptStageTerminationException: "GraphStage Akka.Streams.Implementation.Fusing.TerminationWatcher`1+Logic[HubProto.IHubEnvelope] terminated abruptly, caused by for example materializer or actor system termination."
+[T+ 14.468s] [21:42:17.908] [C/C           ] actor PostStop
+
+====================================================================================================
+SCENARIO 2 -- BASELINE, ZOMBIE CONSUMER  (the customer's actual failure mode)
+Consumer B stops completing its sink work: actor alive, stream materialized, StreamRef
+connected, but demand stops. Nothing in the stream layer is notified of anything.
+====================================================================================================
+[T+  0.009s] [21:42:17.935] [HUB           ] MergeHub->PartitionHub materialized. mode=Baseline mergeHubPerProducerBuffer=4 partitionHubBuffer=8 (AGGREGATE across all consumers) startAfterNrOfConsumers=3
+[T+  0.009s] [21:42:17.935] [C/A           ] requested a stream from the hub
+[T+  0.010s] [21:42:17.935] [HUB           ] materialized per-consumer link for A at T+0.009s
+[T+  0.010s] [21:42:17.935] [C/A           ] received SourceRef from hub, materializing consumer-side stream
+[T+  0.010s] [21:42:17.935] [C/B           ] requested a stream from the hub
+[T+  0.010s] [21:42:17.936] [HUB           ] materialized per-consumer link for B at T+0.010s
+[T+  0.010s] [21:42:17.936] [C/B           ] received SourceRef from hub, materializing consumer-side stream
+[T+  0.011s] [21:42:17.936] [HARNESS       ] consumer A is attached (1/3)
+[T+  0.011s] [21:42:17.936] [C/C           ] requested a stream from the hub
+[T+  0.011s] [21:42:17.936] [HARNESS       ] consumer B is attached (2/3)
+[T+  0.011s] [21:42:17.937] [HUB           ] materialized per-consumer link for C at T+0.011s
+[T+  0.011s] [21:42:17.937] [C/C           ] received SourceRef from hub, materializing consumer-side stream
+[T+  0.015s] [21:42:17.941] [HARNESS       ] consumer C is attached (3/3)
+[T+  0.015s] [21:42:17.941] [HARNESS       ] all consumers attached
+[T+  0.016s] [21:42:17.941] [PRODUCER      ] attached to MergeHub, target rate = 30 items/sec
+[T+  0.016s] [21:42:17.941] [HARNESS       ] >>> steady state with 3 healthy consumers (waiting 4.0s)
+[T+  0.016s] [21:42:17.941] [HUB/PARTITION ] *** PartitionHub registered-consumer count is now 3 (was -1) ***
+[T+  1.015s] [21:42:18.940] [SAMPLE        ] produced=  31(+31)  processed[A:  10(+10)  B:  10(+10)  C:   9(+ 9)]
+[T+  2.015s] [21:42:19.941] [SAMPLE        ] produced=  61(+30)  processed[A:  20(+10)  B:  20(+10)  C:  19(+10)]
+[T+  3.016s] [21:42:20.941] [SAMPLE        ] produced=  91(+30)  processed[A:  30(+10)  B:  30(+10)  C:  29(+10)]
+[T+  4.016s] [21:42:21.942] [SAMPLE        ] produced= 121(+30)  processed[A:  40(+10)  B:  40(+10)  C:  39(+10)]
+[T+  4.016s] [21:42:21.942] [HARNESS       ] *** ZOMBIFYING consumer B at T+4.016s ***
+[T+  4.016s] [21:42:21.942] [HARNESS       ] >>> observing whether the whole hub stalls (waiting 16.0s)
+[T+  4.016s] [21:42:21.942] [C/B           ] ### GATE CLOSED -- sink stops completing work. Actor is still alive, stream is still materialized. This is the ZOMBIE. ###
+[T+  5.016s] [21:42:22.941] [SAMPLE        ] produced= 151(+30)  processed[A:  50(+10)  B:  40(+ 0)  C:  49(+10)]
+[T+  6.016s] [21:42:23.941] [SAMPLE        ] produced= 158(+ 7)  processed[A:  52(+ 2)  B:  40(+ 0)  C:  51(+ 2)]
+[T+  6.305s] [21:42:24.230] [PRODUCER/STALL] !!! offer of Work#160 has been blocked for >1s -- the hub is not accepting work !!!
+[T+  7.016s] [21:42:24.941] [SAMPLE        ] produced= 158(+ 0)  processed[A:  52(+ 0)  B:  40(+ 0)  C:  51(+ 0)]
+[T+  7.304s] [21:42:25.230] [PRODUCER/STALL]     ... still blocked on Work#160 after 2.0s
+[T+  8.016s] [21:42:25.941] [SAMPLE        ] produced= 158(+ 0)  processed[A:  52(+ 0)  B:  40(+ 0)  C:  51(+ 0)]
+[T+  8.305s] [21:42:26.231] [PRODUCER/STALL]     ... still blocked on Work#160 after 3.0s
+[T+  9.016s] [21:42:26.942] [SAMPLE        ] produced= 158(+ 0)  processed[A:  52(+ 0)  B:  40(+ 0)  C:  51(+ 0)]
+[T+  9.305s] [21:42:27.230] [PRODUCER/STALL]     ... still blocked on Work#160 after 4.0s
+[T+ 10.016s] [21:42:27.942] [SAMPLE        ] produced= 158(+ 0)  processed[A:  52(+ 0)  B:  40(+ 0)  C:  51(+ 0)]
+[T+ 10.305s] [21:42:28.230] [PRODUCER/STALL]     ... still blocked on Work#160 after 5.0s
+[T+ 11.017s] [21:42:28.942] [SAMPLE        ] produced= 158(+ 0)  processed[A:  52(+ 0)  B:  40(+ 0)  C:  51(+ 0)]
+[T+ 11.305s] [21:42:29.230] [PRODUCER/STALL]     ... still blocked on Work#160 after 6.0s
+[T+ 12.017s] [21:42:29.943] [SAMPLE        ] produced= 158(+ 0)  processed[A:  52(+ 0)  B:  40(+ 0)  C:  51(+ 0)]
+[T+ 12.304s] [21:42:30.230] [PRODUCER/STALL]     ... still blocked on Work#160 after 7.0s
+[T+ 13.018s] [21:42:30.944] [SAMPLE        ] produced= 158(+ 0)  processed[A:  52(+ 0)  B:  40(+ 0)  C:  51(+ 0)]
+[T+ 13.305s] [21:42:31.230] [PRODUCER/STALL]     ... still blocked on Work#160 after 8.0s
+[T+ 14.019s] [21:42:31.945] [SAMPLE        ] produced= 158(+ 0)  processed[A:  52(+ 0)  B:  40(+ 0)  C:  51(+ 0)]
+[T+ 14.305s] [21:42:32.230] [PRODUCER/STALL]     ... still blocked on Work#160 after 9.0s
+[T+ 15.020s] [21:42:32.946] [SAMPLE        ] produced= 158(+ 0)  processed[A:  52(+ 0)  B:  40(+ 0)  C:  51(+ 0)]
+[T+ 15.305s] [21:42:33.230] [PRODUCER/STALL]     ... still blocked on Work#160 after 10.0s
+[T+ 16.020s] [21:42:33.945] [SAMPLE        ] produced= 158(+ 0)  processed[A:  52(+ 0)  B:  40(+ 0)  C:  51(+ 0)]
+[T+ 16.304s] [21:42:34.230] [PRODUCER/STALL]     ... still blocked on Work#160 after 11.0s
+[T+ 17.020s] [21:42:34.945] [SAMPLE        ] produced= 158(+ 0)  processed[A:  52(+ 0)  B:  40(+ 0)  C:  51(+ 0)]
+[T+ 17.305s] [21:42:35.231] [PRODUCER/STALL]     ... still blocked on Work#160 after 12.0s
+[T+ 18.020s] [21:42:35.946] [SAMPLE        ] produced= 158(+ 0)  processed[A:  52(+ 0)  B:  40(+ 0)  C:  51(+ 0)]
+[T+ 18.305s] [21:42:36.231] [PRODUCER/STALL]     ... still blocked on Work#160 after 13.0s
+[T+ 19.020s] [21:42:36.946] [SAMPLE        ] produced= 158(+ 0)  processed[A:  52(+ 0)  B:  40(+ 0)  C:  51(+ 0)]
+[T+ 19.305s] [21:42:37.231] [PRODUCER/STALL]     ... still blocked on Work#160 after 14.0s
+[T+ 20.021s] [21:42:37.947] [SAMPLE        ] produced= 158(+ 0)  processed[A:  52(+ 0)  B:  40(+ 0)  C:  51(+ 0)]
+[T+ 20.305s] [21:42:38.231] [PRODUCER/STALL] producer shut down while STILL BLOCKED on Work#160 after 15.001s of unrelieved backpressure
+[T+ 20.306s] [21:42:38.231] [PRODUCER      ] stopped. 159 items accepted into the MergeHub.
+[T+ 20.306s] [21:42:38.231] [HARNESS       ] >>> settling (waiting 2.0s)
+[T+ 21.021s] [21:42:38.946] [SAMPLE        ] produced= 158(+ 0)  processed[A:  52(+ 0)  B:  40(+ 0)  C:  51(+ 0)]
+[T+ 22.021s] [21:42:39.946] [SAMPLE        ] produced= 158(+ 0)  processed[A:  52(+ 0)  B:  40(+ 0)  C:  51(+ 0)]
+
+--- REPORT :: Scenario 2 -- baseline, zombie -------------------------------------------------------
+  Produced (accepted into MergeHub) : 158
+  Processed (all consumer sinks)    : 143
+  LOST                              : 15
+
+  consumer    link-emitted  arrived  processed  hb-injected  hb-received
+  A                     52       52         52            0            0
+  B                     43       41         40            0            0
+  C                     51       51         51            0            0
+
+  Element-loss breakdown:
+    -    3 lost AFTER leaving the hub on link[B] (in the KeepAlive/IdleTimeout/StreamRef path or the consumer's buffers): 122,125,128
+    -   12 never left the hub (dropped from a PartitionHub per-consumer queue on deregistration, or still queued at shutdown): 131,134,137,140,143,146,149,152,155,156,157,158
+
+  Partitioner input check: 155 Work items, 0 Heartbeats (PASS -- heartbeats never crossed the partitioner)
+
+  PartitionHub registered-consumer count timeline (read straight out of the partitioner's `size` arg):
+    T+  0.016s -> 3 consumers
+
+  Hub-side link terminations:
+    (none)
+
+  Consumer-side stream terminations:
+    (none)
+
+  Producer worst backpressure stall: 15.001s (Work#160, offered at T+5.305s)
+
+  Consumer B zombified at T+4.016s
+  Produced at zombify time                 : 121
+  Produced by end of the 16s observation   : 158
+  => hub accepted 37 more items in 16s (healthy rate would have been ~485)
+  Healthy consumers (A+C) processed during those 16s: 24
+  Blackholed into the zombie: link-emitted=43 arrived=41 processed=40
+[T+ 22.312s] [21:42:40.238] [C/A           ] actor PostStop
+[T+ 22.313s] [21:42:40.238] [C/A/DEAD      ] consumer stream FAILED at T+22.312s :: Akka.Streams.AbruptStageTerminationException: "GraphStage Akka.Streams.Implementation.Fusing.TerminationWatcher`1+Logic[HubProto.Work] terminated abruptly, caused by for example materializer or actor system termination."
+[T+ 22.313s] [21:42:40.238] [HUB/LINK-DEAD ] link[A] FAILED at T+22.313s :: Akka.Streams.RemoteStreamRefActorTerminatedException: "Remote target receiver of data terminated. Local stream terminating, message loss (on remote side) may have happened."
+[T+ 22.313s] [21:42:40.238] [C/B           ] actor PostStop
+[T+ 22.313s] [21:42:40.238] [C/B/DEAD      ] consumer stream FAILED at T+22.313s :: Akka.Streams.AbruptStageTerminationException: "GraphStage Akka.Streams.Implementation.Fusing.TerminationWatcher`1+Logic[HubProto.Work] terminated abruptly, caused by for example materializer or actor system termination."
+[T+ 22.313s] [21:42:40.239] [HUB/PARTITION ] *** PartitionHub registered-consumer count is now 1 (was 3) ***
+[T+ 22.314s] [21:42:40.239] [HUB/LINK-DEAD ] link[B] FAILED at T+22.313s :: Akka.Streams.RemoteStreamRefActorTerminatedException: "Remote target receiver of data terminated. Local stream terminating, message loss (on remote side) may have happened."
+[T+ 22.314s] [21:42:40.239] [C/C           ] actor PostStop
+[T+ 22.314s] [21:42:40.239] [HUB/LINK-DEAD ] link[C] FAILED at T+22.314s :: Akka.Streams.AbruptStageTerminationException: "GraphStage Akka.Streams.Implementation.Fusing.TerminationWatcher`1+Logic[HubProto.IHubEnvelope] terminated abruptly, caused by for example materializer or actor system termination."
+[T+ 22.314s] [21:42:40.239] [C/C/DEAD      ] consumer stream FAILED at T+22.314s :: Akka.Streams.AbruptStageTerminationException: "GraphStage Akka.Streams.Implementation.Fusing.TerminationWatcher`1+Logic[HubProto.Work] terminated abruptly, caused by for example materializer or actor system termination."
+
+====================================================================================================
+SCENARIO 3 -- THE FIX: per-link KeepAlive(2s) -> IdleTimeout(5s), AFTER the PartitionHub
+Same zombie as scenario 2. Then a deliberate QUIET PERIOD with zero work, to prove that
+healthy-but-idle consumers are NOT reaped (heartbeats keep their links alive).
+====================================================================================================
+[T+  0.011s] [21:42:40.254] [HUB           ] MergeHub->PartitionHub materialized. mode=Fixed mergeHubPerProducerBuffer=4 partitionHubBuffer=8 (AGGREGATE across all consumers) startAfterNrOfConsumers=3
+[T+  0.011s] [21:42:40.254] [HUB           ] Per-link liveness: KeepAlive=2s -> IdleTimeout=5s (both AFTER the PartitionHub)
+[T+  0.012s] [21:42:40.254] [C/A           ] requested a stream from the hub
+[T+  0.013s] [21:42:40.256] [C/C           ] requested a stream from the hub
+[T+  0.013s] [21:42:40.256] [C/B           ] requested a stream from the hub
+[T+  0.015s] [21:42:40.257] [HUB           ] materialized per-consumer link for A at T+0.013s
+[T+  0.015s] [21:42:40.258] [HUB           ] materialized per-consumer link for C at T+0.015s
+[T+  0.017s] [21:42:40.260] [HUB           ] materialized per-consumer link for B at T+0.015s
+[T+  0.019s] [21:42:40.261] [C/B           ] received SourceRef from hub, materializing consumer-side stream
+[T+  0.019s] [21:42:40.262] [C/A           ] received SourceRef from hub, materializing consumer-side stream
+[T+  0.019s] [21:42:40.262] [C/C           ] received SourceRef from hub, materializing consumer-side stream
+[T+  0.020s] [21:42:40.262] [HARNESS       ] consumer C is attached (1/3)
+[T+  0.020s] [21:42:40.262] [HARNESS       ] consumer A is attached (2/3)
+[T+  0.020s] [21:42:40.262] [HARNESS       ] consumer B is attached (3/3)
+[T+  0.020s] [21:42:40.262] [HARNESS       ] all consumers attached
+[T+  0.020s] [21:42:40.263] [PRODUCER      ] attached to MergeHub, target rate = 30 items/sec
+[T+  0.020s] [21:42:40.263] [HARNESS       ] >>> steady state with 3 healthy consumers (waiting 4.0s)
+[T+  0.020s] [21:42:40.263] [HUB/PARTITION ] *** PartitionHub registered-consumer count is now 3 (was -1) ***
+[T+  1.020s] [21:42:41.262] [SAMPLE        ] produced=  31(+31)  processed[A:  10(+10)  B:   9(+ 9)  C:  10(+10)]
+[T+  2.019s] [21:42:42.262] [SAMPLE        ] produced=  61(+30)  processed[A:  20(+10)  B:  19(+10)  C:  20(+10)]
+[T+  3.020s] [21:42:43.262] [SAMPLE        ] produced=  91(+30)  processed[A:  30(+10)  B:  29(+10)  C:  30(+10)]
+[T+  4.020s] [21:42:44.263] [SAMPLE        ] produced= 121(+30)  processed[A:  40(+10)  B:  39(+10)  C:  40(+10)]
+[T+  4.020s] [21:42:44.263] [HARNESS       ] *** ZOMBIFYING consumer B at T+4.020s ***
+[T+  4.021s] [21:42:44.263] [HARNESS       ] >>> waiting for IdleTimeout to reap the zombie link and unstall the hub (waiting 12.0s)
+[T+  4.021s] [21:42:44.263] [C/B           ] ### GATE CLOSED -- sink stops completing work. Actor is still alive, stream is still materialized. This is the ZOMBIE. ###
+[T+  5.021s] [21:42:45.264] [SAMPLE        ] produced= 151(+30)  processed[A:  50(+10)  B:  40(+ 1)  C:  50(+10)]
+[T+  6.021s] [21:42:46.263] [SAMPLE        ] produced= 162(+11)  processed[A:  53(+ 3)  B:  40(+ 0)  C:  53(+ 3)]
+[T+  6.441s] [21:42:46.684] [PRODUCER/STALL] !!! offer of Work#164 has been blocked for >1s -- the hub is not accepting work !!!
+[T+  7.021s] [21:42:47.263] [SAMPLE        ] produced= 162(+ 0)  processed[A:  53(+ 0)  B:  40(+ 0)  C:  53(+ 0)]
+[T+  7.215s] [21:42:47.458] [HUB/KEEPALIVE ] injected Heartbeat into link[A]
+[T+  7.216s] [21:42:47.458] [C/A           ] <3 heartbeat received (dropped before the sink)
+[T+  7.253s] [21:42:47.496] [HUB/KEEPALIVE ] injected Heartbeat into link[C]
+[T+  7.253s] [21:42:47.496] [C/C           ] <3 heartbeat received (dropped before the sink)
+[T+  7.441s] [21:42:47.684] [PRODUCER/STALL]     ... still blocked on Work#164 after 2.0s
+[T+  8.021s] [21:42:48.263] [SAMPLE        ] produced= 162(+ 0)  processed[A:  53(+ 0)  B:  40(+ 0)  C:  53(+ 0)]
+[T+  8.442s] [21:42:48.685] [PRODUCER/STALL]     ... still blocked on Work#164 after 3.0s
+[T+  9.021s] [21:42:49.264] [SAMPLE        ] produced= 162(+ 0)  processed[A:  53(+ 0)  B:  40(+ 0)  C:  53(+ 0)]
+[T+  9.224s] [21:42:49.467] [HUB/KEEPALIVE ] injected Heartbeat into link[A]
+[T+  9.224s] [21:42:49.467] [C/A           ] <3 heartbeat received (dropped before the sink)
+[T+  9.264s] [21:42:49.506] [HUB/KEEPALIVE ] injected Heartbeat into link[C]
+[T+  9.264s] [21:42:49.506] [C/C           ] <3 heartbeat received (dropped before the sink)
+[T+  9.347s] [21:42:49.590] [HUB/LINK-DEAD ] link[B] FAILED at T+9.347s :: System.TimeoutException: "No elements passed in the last 00:00:05."
+[T+  9.347s] [21:42:49.590] [HUB/PARTITION ] *** PartitionHub registered-consumer count is now 2 (was 3) ***
+[T+  9.347s] [21:42:49.590] [PRODUCER/STALL] offer of Work#164 finally accepted after 3.906s of backpressure
+[T+  9.349s] [21:42:49.591] [C/B/DEAD      ] consumer stream FAILED at T+9.349s :: Akka.Streams.RemoteStreamRefActorTerminatedException: "Remote stream (akka://s3-fixed-zombie/user/hub/StreamSupervisor-11/$$a) failed, reason: System.TimeoutException: No elements passed in the last 00:00:05."
+[WARNING][08/10/2026 21:42:49.590Z][Thread 0014][SourceShape`1([] [SourceRef.out])(akka://s3-fixed-zombie/user/consumer-B/StreamSupervisor-14)] [SourceRef-1] The remote stream has failed, failing (reason: System.TimeoutException: No elements passed in the last 00:00:05.)
+[T+ 10.021s] [21:42:50.264] [SAMPLE        ] produced= 184(+22)  processed[A:  64(+11)  B:  40(+ 0)  C:  65(+12)]
+[T+ 11.021s] [21:42:51.264] [SAMPLE        ] produced= 214(+30)  processed[A:  79(+15)  B:  40(+ 0)  C:  80(+15)]
+[T+ 12.024s] [21:42:52.267] [SAMPLE        ] produced= 244(+30)  processed[A:  94(+15)  B:  40(+ 0)  C:  95(+15)]
+[T+ 13.025s] [21:42:53.267] [SAMPLE        ] produced= 274(+30)  processed[A: 109(+15)  B:  40(+ 0)  C: 110(+15)]
+[T+ 14.026s] [21:42:54.268] [SAMPLE        ] produced= 304(+30)  processed[A: 124(+15)  B:  40(+ 0)  C: 125(+15)]
+[T+ 15.026s] [21:42:55.268] [SAMPLE        ] produced= 334(+30)  processed[A: 140(+16)  B:  40(+ 0)  C: 140(+15)]
+[T+ 16.021s] [21:42:56.263] [HARNESS       ] *** QUIET PERIOD: pausing the producer entirely ***
+[T+ 16.021s] [21:42:56.264] [PRODUCER      ] PAUSED (no work will be offered to the hub)
+[T+ 16.021s] [21:42:56.264] [HARNESS       ] >>> ZERO work flowing -- do the healthy consumers survive? (waiting 10.0s)
+[T+ 16.025s] [21:42:56.268] [SAMPLE        ] produced= 364(+30)  processed[A: 154(+14)  B:  40(+ 0)  C: 155(+15)]
+[T+ 17.025s] [21:42:57.268] [SAMPLE        ] produced= 364(+ 0)  processed[A: 155(+ 1)  B:  40(+ 0)  C: 156(+ 1)]
+[T+ 17.992s] [21:42:58.235] [HUB/KEEPALIVE ] injected Heartbeat into link[A]
+[T+ 17.993s] [21:42:58.235] [C/A           ] <3 heartbeat received (dropped before the sink)
+[T+ 18.013s] [21:42:58.256] [HUB/KEEPALIVE ] injected Heartbeat into link[C]
+[T+ 18.013s] [21:42:58.256] [C/C           ] <3 heartbeat received (dropped before the sink)
+[T+ 18.049s] [21:42:58.291] [SAMPLE        ] produced= 364(+ 0)  processed[A: 155(+ 0)  B:  40(+ 0)  C: 156(+ 0)]
+[T+ 19.049s] [21:42:59.291] [SAMPLE        ] produced= 364(+ 0)  processed[A: 155(+ 0)  B:  40(+ 0)  C: 156(+ 0)]
+[T+ 20.002s] [21:43:00.245] [HUB/KEEPALIVE ] injected Heartbeat into link[A]
+[T+ 20.003s] [21:43:00.245] [C/A           ] <3 heartbeat received (dropped before the sink)
+[T+ 20.023s] [21:43:00.266] [HUB/KEEPALIVE ] injected Heartbeat into link[C]
+[T+ 20.023s] [21:43:00.266] [C/C           ] <3 heartbeat received (dropped before the sink)
+[T+ 20.049s] [21:43:00.292] [SAMPLE        ] produced= 364(+ 0)  processed[A: 155(+ 0)  B:  40(+ 0)  C: 156(+ 0)]
+[T+ 21.050s] [21:43:01.292] [SAMPLE        ] produced= 364(+ 0)  processed[A: 155(+ 0)  B:  40(+ 0)  C: 156(+ 0)]
+[T+ 22.013s] [21:43:02.255] [HUB/KEEPALIVE ] injected Heartbeat into link[A]
+[T+ 22.013s] [21:43:02.255] [C/A           ] <3 heartbeat received (dropped before the sink)
+[T+ 22.043s] [21:43:02.285] [HUB/KEEPALIVE ] injected Heartbeat into link[C]
+[T+ 22.043s] [21:43:02.285] [C/C           ] <3 heartbeat received (dropped before the sink)
+[T+ 22.050s] [21:43:02.293] [SAMPLE        ] produced= 364(+ 0)  processed[A: 155(+ 0)  B:  40(+ 0)  C: 156(+ 0)]
+[T+ 23.050s] [21:43:03.293] [SAMPLE        ] produced= 364(+ 0)  processed[A: 155(+ 0)  B:  40(+ 0)  C: 156(+ 0)]
+[T+ 24.023s] [21:43:04.265] [HUB/KEEPALIVE ] injected Heartbeat into link[A]
+[T+ 24.023s] [21:43:04.266] [C/A           ] <3 heartbeat received (dropped before the sink)
+[T+ 24.051s] [21:43:04.293] [SAMPLE        ] produced= 364(+ 0)  processed[A: 155(+ 0)  B:  40(+ 0)  C: 156(+ 0)]
+[T+ 24.054s] [21:43:04.297] [HUB/KEEPALIVE ] injected Heartbeat into link[C]
+[T+ 24.054s] [21:43:04.297] [C/C           ] <3 heartbeat received (dropped before the sink)
+[T+ 25.051s] [21:43:05.294] [SAMPLE        ] produced= 364(+ 0)  processed[A: 155(+ 0)  B:  40(+ 0)  C: 156(+ 0)]
+[T+ 26.023s] [21:43:06.265] [HARNESS       ] *** After a 10.0s quiet period, links A and C alive = True (heartbeats delivered during quiet period: A=+4, C=+4) ***
+[T+ 26.023s] [21:43:06.265] [PRODUCER      ] RESUMED
+[T+ 26.023s] [21:43:06.265] [HARNESS       ] >>> throughput should resume immediately to the two survivors (waiting 5.0s)
+[T+ 26.023s] [21:43:06.266] [HUB/KEEPALIVE ] injected Heartbeat into link[A]
+[T+ 26.023s] [21:43:06.266] [C/A           ] <3 heartbeat received (dropped before the sink)
+[T+ 26.052s] [21:43:06.295] [SAMPLE        ] produced= 365(+ 1)  processed[A: 155(+ 0)  B:  40(+ 0)  C: 156(+ 0)]
+[T+ 26.073s] [21:43:06.315] [HUB/KEEPALIVE ] injected Heartbeat into link[C]
+[T+ 26.073s] [21:43:06.315] [C/C           ] <3 heartbeat received (dropped before the sink)
+[T+ 27.052s] [21:43:07.295] [SAMPLE        ] produced= 395(+30)  processed[A: 170(+15)  B:  40(+ 0)  C: 170(+14)]
+[T+ 28.052s] [21:43:08.295] [SAMPLE        ] produced= 425(+30)  processed[A: 185(+15)  B:  40(+ 0)  C: 185(+15)]
+[T+ 29.053s] [21:43:09.296] [SAMPLE        ] produced= 455(+30)  processed[A: 200(+15)  B:  40(+ 0)  C: 201(+16)]
+[T+ 30.054s] [21:43:10.297] [SAMPLE        ] produced= 485(+30)  processed[A: 215(+15)  B:  40(+ 0)  C: 216(+15)]
+[T+ 31.023s] [21:43:11.266] [PRODUCER      ] stopped. 514 items accepted into the MergeHub.
+[T+ 31.023s] [21:43:11.266] [HARNESS       ] >>> settling (waiting 2.0s)
+[T+ 31.054s] [21:43:11.296] [SAMPLE        ] produced= 514(+29)  processed[A: 230(+15)  B:  40(+ 0)  C: 231(+15)]
+[T+ 32.054s] [21:43:12.297] [SAMPLE        ] produced= 514(+ 0)  processed[A: 230(+ 0)  B:  40(+ 0)  C: 231(+ 0)]
+[T+ 32.963s] [21:43:13.206] [HUB/KEEPALIVE ] injected Heartbeat into link[A]
+[T+ 32.964s] [21:43:13.206] [C/A           ] <3 heartbeat received (dropped before the sink)
+[T+ 33.003s] [21:43:13.245] [HUB/KEEPALIVE ] injected Heartbeat into link[C]
+[T+ 33.003s] [21:43:13.245] [C/C           ] <3 heartbeat received (dropped before the sink)
+
+--- REPORT :: Scenario 3 -- fixed pipeline, zombie -------------------------------------------------
+  Produced (accepted into MergeHub) : 514
+  Processed (all consumer sinks)    : 501
+  LOST                              : 13
+
+  consumer    link-emitted  arrived  processed  hb-injected  hb-received
+  A                    230      230        230            8            8
+  B                     44       41         40            0            0
+  C                    231      231        231            8            8
+
+  Element-loss breakdown:
+    -    4 lost AFTER leaving the hub on link[B] (in the KeepAlive/IdleTimeout/StreamRef path or the consumer's buffers): 123,126,129,132
+    -    9 never left the hub (dropped from a PartitionHub per-consumer queue on deregistration, or still queued at shutdown): 135,138,141,144,147,150,153,156,159
+
+  Partitioner input check: 514 Work items, 0 Heartbeats (PASS -- heartbeats never crossed the partitioner)
+
+  PartitionHub registered-consumer count timeline (read straight out of the partitioner's `size` arg):
+    T+  0.020s -> 3 consumers
+    T+  9.347s -> 2 consumers
+
+  Hub-side link terminations:
+    T+  9.347s link[B] failed=True :: System.TimeoutException: "No elements passed in the last 00:00:05."
+
+  Consumer-side stream terminations:
+    T+  9.349s consumer[B] failed=True :: Akka.Streams.RemoteStreamRefActorTerminatedException: "Remote stream (akka://s3-fixed-zombie/user/hub/StreamSupervisor-11/$$a) failed, reason: System.TimeoutException: No elements passed in the last 00:00:05."
+
+  Producer worst backpressure stall: 3.906s (Work#164, offered at T+5.442s)
+
+  Consumer B zombified at T+4.020s
+  Hub-side link[B] died at T+9.347s => 5.327s after the event
+  PartitionHub slot freed (count -> 2) at T+9.347s => 5.327s after the event
+  A+C processed before quiet period: 309; after everything: 461
+  Survivor links still alive at end of quiet period: True
+[T+ 33.026s] [21:43:13.269] [C/A           ] actor PostStop
+[T+ 33.026s] [21:43:13.269] [C/A/DEAD      ] consumer stream FAILED at T+33.026s :: Akka.Streams.AbruptStageTerminationException: "GraphStage Akka.Streams.Implementation.Fusing.TerminationWatcher`1+Logic[HubProto.Work] terminated abruptly, caused by for example materializer or actor system termination."
+[T+ 33.027s] [21:43:13.269] [HUB/LINK-DEAD ] link[A] FAILED at T+33.027s :: Akka.Streams.RemoteStreamRefActorTerminatedException: "Remote target receiver of data terminated. Local stream terminating, message loss (on remote side) may have happened."
+[T+ 33.027s] [21:43:13.269] [C/B           ] actor PostStop
+[T+ 33.027s] [21:43:13.269] [C/C           ] actor PostStop
+[T+ 33.027s] [21:43:13.269] [C/C/DEAD      ] consumer stream FAILED at T+33.027s :: Akka.Streams.AbruptStageTerminationException: "GraphStage Akka.Streams.Implementation.Fusing.TerminationWatcher`1+Logic[HubProto.Work] terminated abruptly, caused by for example materializer or actor system termination."
+[T+ 33.027s] [21:43:13.269] [HUB/LINK-DEAD ] link[C] FAILED at T+33.027s :: Akka.Streams.RemoteStreamRefActorTerminatedException: "Remote target receiver of data terminated. Local stream terminating, message loss (on remote side) may have happened."
+
+====================================================================================================
+SCENARIO 4 -- THE FIX, UNDER ABRUPT DEATH
+Same kill as scenario 1, but with KeepAlive + IdleTimeout in the per-link pipeline.
+Checking that the added stages did not slow down or break DeathWatch-driven teardown.
+====================================================================================================
+[T+  0.011s] [21:43:13.282] [HUB           ] MergeHub->PartitionHub materialized. mode=Fixed mergeHubPerProducerBuffer=4 partitionHubBuffer=8 (AGGREGATE across all consumers) startAfterNrOfConsumers=3
+[T+  0.011s] [21:43:13.282] [HUB           ] Per-link liveness: KeepAlive=2s -> IdleTimeout=5s (both AFTER the PartitionHub)
+[T+  0.014s] [21:43:13.285] [C/C           ] requested a stream from the hub
+[T+  0.014s] [21:43:13.285] [C/B           ] requested a stream from the hub
+[T+  0.014s] [21:43:13.285] [C/A           ] requested a stream from the hub
+[T+  0.014s] [21:43:13.285] [HUB           ] materialized per-consumer link for C at T+0.014s
+[T+  0.014s] [21:43:13.285] [HUB           ] materialized per-consumer link for A at T+0.014s
+[T+  0.015s] [21:43:13.285] [C/C           ] received SourceRef from hub, materializing consumer-side stream
+[T+  0.015s] [21:43:13.286] [HUB           ] materialized per-consumer link for B at T+0.014s
+[T+  0.015s] [21:43:13.286] [C/B           ] received SourceRef from hub, materializing consumer-side stream
+[T+  0.015s] [21:43:13.286] [C/A           ] received SourceRef from hub, materializing consumer-side stream
+[T+  0.015s] [21:43:13.286] [HARNESS       ] consumer C is attached (1/3)
+[T+  0.016s] [21:43:13.287] [HARNESS       ] consumer B is attached (2/3)
+[T+  0.016s] [21:43:13.287] [HARNESS       ] consumer A is attached (3/3)
+[T+  0.016s] [21:43:13.287] [HARNESS       ] all consumers attached
+[T+  0.016s] [21:43:13.287] [PRODUCER      ] attached to MergeHub, target rate = 30 items/sec
+[T+  0.016s] [21:43:13.287] [HARNESS       ] >>> steady state with 3 healthy consumers (waiting 4.0s)
+[T+  0.016s] [21:43:13.287] [HUB/PARTITION ] *** PartitionHub registered-consumer count is now 3 (was -1) ***
+[T+  1.016s] [21:43:14.286] [SAMPLE        ] produced=  31(+31)  processed[A:  10(+10)  B:   9(+ 9)  C:  10(+10)]
+[T+  2.015s] [21:43:15.286] [SAMPLE        ] produced=  61(+30)  processed[A:  20(+10)  B:  19(+10)  C:  20(+10)]
+[T+  3.016s] [21:43:16.287] [SAMPLE        ] produced=  91(+30)  processed[A:  30(+10)  B:  29(+10)  C:  30(+10)]
+[T+  4.017s] [21:43:17.288] [HARNESS       ] *** KILLING consumer B at T+4.017s ***
+[T+  4.017s] [21:43:17.288] [HARNESS       ] >>> observing teardown and re-routing (waiting 8.0s)
+[T+  4.017s] [21:43:17.288] [C/B           ] ### Context.Stop(Self) -- abrupt death, no stream completion ###
+[T+  4.017s] [21:43:17.288] [SAMPLE        ] produced= 121(+30)  processed[A:  40(+10)  B:  39(+10)  C:  40(+10)]
+[T+  4.017s] [21:43:17.288] [C/B/DEAD      ] consumer stream FAILED at T+4.017s :: Akka.Streams.AbruptStageTerminationException: "GraphStage Akka.Streams.Implementation.Fusing.TerminationWatcher`1+Logic[HubProto.Work] terminated abruptly, caused by for example materializer or actor system termination."
+[T+  4.017s] [21:43:17.288] [C/B           ] actor PostStop
+[T+  4.017s] [21:43:17.288] [HUB/LINK-DEAD ] link[B] FAILED at T+4.017s :: Akka.Streams.RemoteStreamRefActorTerminatedException: "Remote target receiver of data terminated. Local stream terminating, message loss (on remote side) may have happened."
+[T+  4.036s] [21:43:17.307] [HUB/PARTITION ] *** PartitionHub registered-consumer count is now 2 (was 3) ***
+[T+  5.018s] [21:43:18.289] [SAMPLE        ] produced= 151(+30)  processed[A:  55(+15)  B:  40(+ 1)  C:  55(+15)]
+[T+  6.017s] [21:43:19.288] [SAMPLE        ] produced= 181(+30)  processed[A:  70(+15)  B:  40(+ 0)  C:  70(+15)]
+[T+  7.017s] [21:43:20.288] [SAMPLE        ] produced= 211(+30)  processed[A:  85(+15)  B:  40(+ 0)  C:  85(+15)]
+[T+  8.017s] [21:43:21.288] [SAMPLE        ] produced= 241(+30)  processed[A: 100(+15)  B:  40(+ 0)  C: 100(+15)]
+[T+  9.018s] [21:43:22.289] [SAMPLE        ] produced= 272(+31)  processed[A: 115(+15)  B:  40(+ 0)  C: 115(+15)]
+[T+ 10.017s] [21:43:23.288] [SAMPLE        ] produced= 302(+30)  processed[A: 130(+15)  B:  40(+ 0)  C: 130(+15)]
+[T+ 11.017s] [21:43:24.288] [SAMPLE        ] produced= 332(+30)  processed[A: 145(+15)  B:  40(+ 0)  C: 145(+15)]
+[T+ 12.017s] [21:43:25.287] [PRODUCER      ] stopped. 362 items accepted into the MergeHub.
+[T+ 12.017s] [21:43:25.288] [HARNESS       ] >>> settling (waiting 2.0s)
+[T+ 12.018s] [21:43:25.289] [SAMPLE        ] produced= 362(+30)  processed[A: 160(+15)  B:  40(+ 0)  C: 160(+15)]
+[T+ 13.019s] [21:43:26.290] [SAMPLE        ] produced= 362(+ 0)  processed[A: 161(+ 1)  B:  40(+ 0)  C: 161(+ 1)]
+[T+ 13.977s] [21:43:27.248] [HUB/KEEPALIVE ] injected Heartbeat into link[C]
+[T+ 13.977s] [21:43:27.248] [C/C           ] <3 heartbeat received (dropped before the sink)
+[T+ 14.007s] [21:43:27.278] [HUB/KEEPALIVE ] injected Heartbeat into link[A]
+[T+ 14.007s] [21:43:27.278] [C/A           ] <3 heartbeat received (dropped before the sink)
+
+--- REPORT :: Scenario 4 -- fixed pipeline, abrupt death -------------------------------------------
+  Produced (accepted into MergeHub) : 362
+  Processed (all consumer sinks)    : 362
+  LOST                              : 0
+
+  consumer    link-emitted  arrived  processed  hb-injected  hb-received
+  A                    161      161        161            1            1
+  B                     40       40         40            0            0
+  C                    161      161        161            1            1
+
+  Element-loss breakdown:
+    -    0 never left the hub (dropped from a PartitionHub per-consumer queue on deregistration, or still queued at shutdown): (none)
+
+  Partitioner input check: 362 Work items, 0 Heartbeats (PASS -- heartbeats never crossed the partitioner)
+
+  PartitionHub registered-consumer count timeline (read straight out of the partitioner's `size` arg):
+    T+  0.016s -> 3 consumers
+    T+  4.036s -> 2 consumers
+
+  Hub-side link terminations:
+    T+  4.017s link[B] failed=True :: Akka.Streams.RemoteStreamRefActorTerminatedException: "Remote target receiver of data terminated. Local stream terminating, message loss (on remote side) may have happened."
+
+  Consumer-side stream terminations:
+    T+  4.017s consumer[B] failed=True :: Akka.Streams.AbruptStageTerminationException: "GraphStage Akka.Streams.Implementation.Fusing.TerminationWatcher`1+Logic[HubProto.Work] terminated abruptly, caused by for example materializer or actor system termination."
+
+  Producer worst backpressure stall: 0.000s (Work#106, offered at T+3.504s)
+
+  Consumer B was killed at T+4.017s
+  Hub-side link[B] died at T+4.017s => 0.001s after the event
+  PartitionHub slot freed (count -> 2) at T+4.036s => 0.019s after the event
+[T+ 14.018s] [21:43:27.289] [C/A           ] actor PostStop
+[T+ 14.018s] [21:43:27.289] [C/A/DEAD      ] consumer stream FAILED at T+14.018s :: Akka.Streams.AbruptStageTerminationException: "GraphStage Akka.Streams.Implementation.Fusing.TerminationWatcher`1+Logic[HubProto.Work] terminated abruptly, caused by for example materializer or actor system termination."
+[T+ 14.018s] [21:43:27.289] [HUB/LINK-DEAD ] link[A] FAILED at T+14.018s :: Akka.Streams.RemoteStreamRefActorTerminatedException: "Remote target receiver of data terminated. Local stream terminating, message loss (on remote side) may have happened."
+[T+ 14.019s] [21:43:27.289] [C/C           ] actor PostStop
+[T+ 14.019s] [21:43:27.290] [C/C/DEAD      ] consumer stream FAILED at T+14.019s :: Akka.Streams.AbruptStageTerminationException: "GraphStage Akka.Streams.Implementation.Fusing.TerminationWatcher`1+Logic[HubProto.Work] terminated abruptly, caused by for example materializer or actor system termination."
+[T+ 14.019s] [21:43:27.290] [HUB/LINK-DEAD ] link[C] FAILED at T+14.019s :: Akka.Streams.RemoteStreamRefActorTerminatedException: "Remote target receiver of data terminated. Local stream terminating, message loss (on remote side) may have happened."
+
+====================================================================================================
+SCENARIO 5 -- THE SHARP EDGE: transient slowness is indistinguishable from death
+Consumer B stalls for 8s (> IdleTimeout of 5s) and then RECOVERS. Nothing died. This
+probes whether the KeepAlive+IdleTimeout design produces false positives, because
+KeepAlive can only emit a heartbeat when downstream has demand -- and a merely-slow
+consumer with a full buffer grants no demand either.
+====================================================================================================
+[T+  0.005s] [21:43:27.297] [C/A           ] requested a stream from the hub
+[T+  0.006s] [21:43:27.298] [HUB           ] MergeHub->PartitionHub materialized. mode=Fixed mergeHubPerProducerBuffer=4 partitionHubBuffer=8 (AGGREGATE across all consumers) startAfterNrOfConsumers=3
+[T+  0.006s] [21:43:27.298] [HUB           ] Per-link liveness: KeepAlive=2s -> IdleTimeout=5s (both AFTER the PartitionHub)
+[T+  0.006s] [21:43:27.298] [HUB           ] materialized per-consumer link for A at T+0.006s
+[T+  0.007s] [21:43:27.298] [C/C           ] requested a stream from the hub
+[T+  0.007s] [21:43:27.299] [HUB           ] materialized per-consumer link for C at T+0.007s
+[T+  0.007s] [21:43:27.299] [C/B           ] requested a stream from the hub
+[T+  0.007s] [21:43:27.299] [C/A           ] received SourceRef from hub, materializing consumer-side stream
+[T+  0.007s] [21:43:27.299] [HUB           ] materialized per-consumer link for B at T+0.007s
+[T+  0.007s] [21:43:27.299] [C/B           ] received SourceRef from hub, materializing consumer-side stream
+[T+  0.007s] [21:43:27.299] [HARNESS       ] consumer A is attached (1/3)
+[T+  0.008s] [21:43:27.299] [HARNESS       ] consumer B is attached (2/3)
+[T+  0.008s] [21:43:27.299] [C/C           ] received SourceRef from hub, materializing consumer-side stream
+[T+  0.008s] [21:43:27.299] [HARNESS       ] consumer C is attached (3/3)
+[T+  0.008s] [21:43:27.299] [HARNESS       ] all consumers attached
+[T+  0.008s] [21:43:27.300] [PRODUCER      ] attached to MergeHub, target rate = 30 items/sec
+[T+  0.008s] [21:43:27.300] [HARNESS       ] >>> steady state with 3 healthy consumers (waiting 4.0s)
+[T+  0.008s] [21:43:27.300] [HUB/PARTITION ] *** PartitionHub registered-consumer count is now 3 (was -1) ***
+[T+  1.008s] [21:43:28.300] [SAMPLE        ] produced=  30(+30)  processed[A:  10(+10)  B:   9(+ 9)  C:  10(+10)]
+[T+  2.009s] [21:43:29.300] [SAMPLE        ] produced=  60(+30)  processed[A:  20(+10)  B:  19(+10)  C:  20(+10)]
+[T+  3.009s] [21:43:30.300] [SAMPLE        ] produced=  91(+31)  processed[A:  30(+10)  B:  29(+10)  C:  30(+10)]
+[T+  4.009s] [21:43:31.300] [HARNESS       ] *** Consumer B goes SLOW (not dead) at T+4.009s ***
+[T+  4.009s] [21:43:31.300] [SAMPLE        ] produced= 121(+30)  processed[A:  40(+10)  B:  39(+10)  C:  40(+10)]
+[T+  4.009s] [21:43:31.300] [HARNESS       ] >>> B is slow but alive and fully intends to come back (waiting 8.0s)
+[T+  4.009s] [21:43:31.300] [C/B           ] ### GATE CLOSED -- sink stops completing work. Actor is still alive, stream is still materialized. This is the ZOMBIE. ###
+[T+  5.009s] [21:43:32.301] [SAMPLE        ] produced= 151(+30)  processed[A:  50(+10)  B:  40(+ 1)  C:  50(+10)]
+[T+  6.009s] [21:43:33.300] [SAMPLE        ] produced= 162(+11)  processed[A:  53(+ 3)  B:  40(+ 0)  C:  53(+ 3)]
+[T+  6.435s] [21:43:33.726] [PRODUCER/STALL] !!! offer of Work#164 has been blocked for >1s -- the hub is not accepting work !!!
+[T+  7.009s] [21:43:34.300] [SAMPLE        ] produced= 162(+ 0)  processed[A:  53(+ 0)  B:  40(+ 0)  C:  53(+ 0)]
+[T+  7.207s] [21:43:34.499] [HUB/KEEPALIVE ] injected Heartbeat into link[A]
+[T+  7.208s] [21:43:34.499] [C/A           ] <3 heartbeat received (dropped before the sink)
+[T+  7.246s] [21:43:34.538] [HUB/KEEPALIVE ] injected Heartbeat into link[C]
+[T+  7.246s] [21:43:34.538] [C/C           ] <3 heartbeat received (dropped before the sink)
+[T+  7.434s] [21:43:34.726] [PRODUCER/STALL]     ... still blocked on Work#164 after 2.0s
+[T+  8.009s] [21:43:35.301] [SAMPLE        ] produced= 162(+ 0)  processed[A:  53(+ 0)  B:  40(+ 0)  C:  53(+ 0)]
+[T+  8.435s] [21:43:35.727] [PRODUCER/STALL]     ... still blocked on Work#164 after 3.0s
+[T+  9.010s] [21:43:36.301] [SAMPLE        ] produced= 162(+ 0)  processed[A:  53(+ 0)  B:  40(+ 0)  C:  53(+ 0)]
+[T+  9.227s] [21:43:36.519] [HUB/KEEPALIVE ] injected Heartbeat into link[A]
+[T+  9.227s] [21:43:36.519] [C/A           ] <3 heartbeat received (dropped before the sink)
+[T+  9.257s] [21:43:36.549] [HUB/KEEPALIVE ] injected Heartbeat into link[C]
+[T+  9.257s] [21:43:36.549] [C/C           ] <3 heartbeat received (dropped before the sink)
+[T+  9.327s] [21:43:36.619] [HUB/LINK-DEAD ] link[B] FAILED at T+9.327s :: System.TimeoutException: "No elements passed in the last 00:00:05."
+[T+  9.327s] [21:43:36.619] [HUB/PARTITION ] *** PartitionHub registered-consumer count is now 2 (was 3) ***
+[T+  9.327s] [21:43:36.619] [PRODUCER/STALL] offer of Work#164 finally accepted after 3.893s of backpressure
+[WARNING][08/10/2026 21:43:36.619Z][Thread 0010][SourceShape`1([] [SourceRef.out])(akka://s5-fixed-slow/user/consumer-B/StreamSupervisor-24)] [SourceRef-1] The remote stream has failed, failing (reason: System.TimeoutException: No elements passed in the last 00:00:05.)
+[T+  9.328s] [21:43:36.619] [C/B/DEAD      ] consumer stream FAILED at T+9.328s :: Akka.Streams.RemoteStreamRefActorTerminatedException: "Remote stream (akka://s5-fixed-slow/user/hub/StreamSupervisor-22/$$b) failed, reason: System.TimeoutException: No elements passed in the last 00:00:05."
+[T+ 10.010s] [21:43:37.301] [SAMPLE        ] produced= 184(+22)  processed[A:  64(+11)  B:  40(+ 0)  C:  65(+12)]
+[T+ 11.010s] [21:43:38.301] [SAMPLE        ] produced= 214(+30)  processed[A:  80(+16)  B:  40(+ 0)  C:  80(+15)]
+[T+ 12.008s] [21:43:39.300] [HARNESS       ] *** Consumer B recovers -- gate re-opens ***
+[T+ 12.008s] [21:43:39.300] [HARNESS       ] >>> does B resume receiving work, or was it already reaped? (waiting 6.0s)
+[T+ 12.009s] [21:43:39.300] [C/B           ] ### GATE RE-OPENED ###
+[T+ 12.009s] [21:43:39.301] [SAMPLE        ] produced= 244(+30)  processed[A:  95(+15)  B:  40(+ 0)  C:  95(+15)]
+[T+ 13.009s] [21:43:40.301] [SAMPLE        ] produced= 274(+30)  processed[A: 110(+15)  B:  41(+ 1)  C: 110(+15)]
+[T+ 14.009s] [21:43:41.301] [SAMPLE        ] produced= 304(+30)  processed[A: 125(+15)  B:  41(+ 0)  C: 125(+15)]
+[T+ 15.010s] [21:43:42.301] [SAMPLE        ] produced= 335(+31)  processed[A: 140(+15)  B:  41(+ 0)  C: 140(+15)]
+[T+ 16.009s] [21:43:43.301] [SAMPLE        ] produced= 365(+30)  processed[A: 155(+15)  B:  41(+ 0)  C: 155(+15)]
+[T+ 17.010s] [21:43:44.302] [SAMPLE        ] produced= 394(+29)  processed[A: 170(+15)  B:  41(+ 0)  C: 170(+15)]
+[T+ 18.009s] [21:43:45.300] [PRODUCER      ] stopped. 425 items accepted into the MergeHub.
+[T+ 18.009s] [21:43:45.300] [HARNESS       ] >>> settling (waiting 2.0s)
+[T+ 18.011s] [21:43:45.302] [SAMPLE        ] produced= 425(+31)  processed[A: 185(+15)  B:  41(+ 0)  C: 185(+15)]
+[T+ 19.011s] [21:43:46.303] [SAMPLE        ] produced= 425(+ 0)  processed[A: 186(+ 1)  B:  41(+ 0)  C: 186(+ 1)]
+[T+ 19.977s] [21:43:47.269] [HUB/KEEPALIVE ] injected Heartbeat into link[C]
+[T+ 19.977s] [21:43:47.269] [C/C           ] <3 heartbeat received (dropped before the sink)
+
+--- REPORT :: Scenario 5 -- fixed pipeline, transient slowness -------------------------------------
+  Produced (accepted into MergeHub) : 425
+  Processed (all consumer sinks)    : 413
+  LOST                              : 12
+
+  consumer    link-emitted  arrived  processed  hb-injected  hb-received
+  A                    186      186        186            2            2
+  B                     44       41         41            0            0
+  C                    186      186        186            3            3
+
+  Element-loss breakdown:
+    -    3 lost AFTER leaving the hub on link[B] (in the KeepAlive/IdleTimeout/StreamRef path or the consumer's buffers): 126,129,132
+    -    9 never left the hub (dropped from a PartitionHub per-consumer queue on deregistration, or still queued at shutdown): 135,138,141,144,147,150,153,156,159
+
+  Partitioner input check: 425 Work items, 0 Heartbeats (PASS -- heartbeats never crossed the partitioner)
+
+  PartitionHub registered-consumer count timeline (read straight out of the partitioner's `size` arg):
+    T+  0.008s -> 3 consumers
+    T+  9.327s -> 2 consumers
+
+  Hub-side link terminations:
+    T+  9.327s link[B] failed=True :: System.TimeoutException: "No elements passed in the last 00:00:05."
+
+  Consumer-side stream terminations:
+    T+  9.328s consumer[B] failed=True :: Akka.Streams.RemoteStreamRefActorTerminatedException: "Remote stream (akka://s5-fixed-slow/user/hub/StreamSupervisor-22/$$b) failed, reason: System.TimeoutException: No elements passed in the last 00:00:05."
+
+  Producer worst backpressure stall: 3.893s (Work#164, offered at T+5.435s)
+
+  B went slow at T+4.009s, recovered 8s later.
+  B total processed by end: 41
+  Hub-side link[B] died at T+9.327s => 5.319s after the event
+  PartitionHub slot freed (count -> 2) at T+9.327s => 5.319s after the event
+[T+ 20.010s] [21:43:47.302] [C/A           ] actor PostStop
+[T+ 20.010s] [21:43:47.302] [C/A/DEAD      ] consumer stream FAILED at T+20.010s :: Akka.Streams.AbruptStageTerminationException: "GraphStage Akka.Streams.Implementation.Fusing.TerminationWatcher`1+Logic[HubProto.Work] terminated abruptly, caused by for example materializer or actor system termination."
+[T+ 20.010s] [21:43:47.302] [HUB/LINK-DEAD ] link[A] FAILED at T+20.010s :: Akka.Streams.AbruptStageTerminationException: "GraphStage Akka.Streams.Implementation.Fusing.TerminationWatcher`1+Logic[HubProto.IHubEnvelope] terminated abruptly, caused by for example materializer or actor system termination."
+[T+ 20.010s] [21:43:47.302] [C/B           ] actor PostStop
+[T+ 20.010s] [21:43:47.302] [HUB/LINK-DEAD ] link[C] FAILED at T+20.010s :: Akka.Streams.AbruptStageTerminationException: "GraphStage Akka.Streams.Implementation.Fusing.TerminationWatcher`1+Logic[HubProto.IHubEnvelope] terminated abruptly, caused by for example materializer or actor system termination."
+[T+ 20.010s] [21:43:47.302] [C/C           ] actor PostStop
+[T+ 20.010s] [21:43:47.302] [C/C/DEAD      ] consumer stream FAILED at T+20.010s :: Akka.Streams.AbruptStageTerminationException: "GraphStage Akka.Streams.Implementation.Fusing.TerminationWatcher`1+Logic[HubProto.Work] terminated abruptly, caused by for example materializer or actor system termination."
+
+====================================================================================================
+SCENARIO 6 -- ABRUPT DEATH WITH A BACKLOG (baseline pipeline)
+B is stalled for 2s first so that a real backlog accumulates in its PartitionHub queue
+and in the StreamRef transport, THEN it is killed. This is what a pod death during a
+traffic spike actually looks like, and it isolates the DeathWatch-path element loss.
+====================================================================================================
+[T+  0.004s] [21:43:47.308] [C/C           ] requested a stream from the hub
+[T+  0.004s] [21:43:47.308] [C/B           ] requested a stream from the hub
+[T+  0.004s] [21:43:47.308] [C/A           ] requested a stream from the hub
+[T+  0.004s] [21:43:47.308] [HUB           ] MergeHub->PartitionHub materialized. mode=Baseline mergeHubPerProducerBuffer=4 partitionHubBuffer=8 (AGGREGATE across all consumers) startAfterNrOfConsumers=3
+[T+  0.005s] [21:43:47.308] [HUB           ] materialized per-consumer link for C at T+0.004s
+[T+  0.005s] [21:43:47.308] [C/C           ] received SourceRef from hub, materializing consumer-side stream
+[T+  0.005s] [21:43:47.308] [HUB           ] materialized per-consumer link for A at T+0.005s
+[T+  0.005s] [21:43:47.308] [C/A           ] received SourceRef from hub, materializing consumer-side stream
+[T+  0.005s] [21:43:47.308] [HUB           ] materialized per-consumer link for B at T+0.005s
+[T+  0.005s] [21:43:47.308] [C/B           ] received SourceRef from hub, materializing consumer-side stream
+[T+  0.005s] [21:43:47.308] [HARNESS       ] consumer C is attached (1/3)
+[T+  0.005s] [21:43:47.308] [HARNESS       ] consumer A is attached (2/3)
+[T+  0.005s] [21:43:47.309] [HARNESS       ] consumer B is attached (3/3)
+[T+  0.005s] [21:43:47.309] [HARNESS       ] all consumers attached
+[T+  0.005s] [21:43:47.309] [PRODUCER      ] attached to MergeHub, target rate = 30 items/sec
+[T+  0.005s] [21:43:47.309] [HARNESS       ] >>> steady state with 3 healthy consumers (waiting 4.0s)
+[T+  0.005s] [21:43:47.309] [HUB/PARTITION ] *** PartitionHub registered-consumer count is now 3 (was -1) ***
+[T+  1.006s] [21:43:48.309] [SAMPLE        ] produced=  30(+30)  processed[A:  10(+10)  B:   9(+ 9)  C:  10(+10)]
+[T+  2.006s] [21:43:49.309] [SAMPLE        ] produced=  60(+30)  processed[A:  20(+10)  B:  19(+10)  C:  20(+10)]
+[T+  3.006s] [21:43:50.310] [SAMPLE        ] produced=  90(+30)  processed[A:  30(+10)  B:  29(+10)  C:  30(+10)]
+[T+  4.006s] [21:43:51.310] [HARNESS       ] *** Stalling consumer B to build a backlog (it is NOT dead yet) ***
+[T+  4.006s] [21:43:51.310] [SAMPLE        ] produced= 121(+31)  processed[A:  40(+10)  B:  39(+10)  C:  40(+10)]
+[T+  4.006s] [21:43:51.310] [HARNESS       ] >>> letting B's queues fill (waiting 2.0s)
+[T+  4.006s] [21:43:51.310] [C/B           ] ### GATE CLOSED -- sink stops completing work. Actor is still alive, stream is still materialized. This is the ZOMBIE. ###
+[T+  5.007s] [21:43:52.310] [SAMPLE        ] produced= 151(+30)  processed[A:  50(+10)  B:  40(+ 1)  C:  50(+10)]
+[T+  6.006s] [21:43:53.310] [HARNESS       ] *** KILLING the backlogged consumer B at T+6.006s ***
+[T+  6.006s] [21:43:53.310] [SAMPLE        ] produced= 160(+ 9)  processed[A:  52(+ 2)  B:  40(+ 0)  C:  52(+ 2)]
+[T+  6.006s] [21:43:53.310] [HARNESS       ] >>> observing teardown, hub recovery, and what happened to B's backlog (waiting 8.0s)
+[T+  6.007s] [21:43:53.310] [C/B           ] ### Context.Stop(Self) -- abrupt death, no stream completion ###
+[T+  6.007s] [21:43:53.310] [C/B/DEAD      ] consumer stream FAILED at T+6.007s :: Akka.Streams.AbruptStageTerminationException: "GraphStage Akka.Streams.Implementation.Fusing.TerminationWatcher`1+Logic[HubProto.Work] terminated abruptly, caused by for example materializer or actor system termination."
+[T+  6.007s] [21:43:53.310] [C/B           ] actor PostStop
+[T+  6.007s] [21:43:53.310] [HUB/LINK-DEAD ] link[B] FAILED at T+6.007s :: Akka.Streams.RemoteStreamRefActorTerminatedException: "Remote target receiver of data terminated. Local stream terminating, message loss (on remote side) may have happened."
+[T+  6.007s] [21:43:53.311] [HUB/PARTITION ] *** PartitionHub registered-consumer count is now 2 (was 3) ***
+[T+  7.007s] [21:43:54.311] [SAMPLE        ] produced= 192(+32)  processed[A:  69(+17)  B:  40(+ 0)  C:  69(+17)]
+[T+  8.007s] [21:43:55.311] [SAMPLE        ] produced= 222(+30)  processed[A:  84(+15)  B:  40(+ 0)  C:  84(+15)]
+[T+  9.008s] [21:43:56.312] [SAMPLE        ] produced= 252(+30)  processed[A:  99(+15)  B:  40(+ 0)  C:  99(+15)]
+[T+ 10.008s] [21:43:57.312] [SAMPLE        ] produced= 282(+30)  processed[A: 114(+15)  B:  40(+ 0)  C: 114(+15)]
+[T+ 11.009s] [21:43:58.312] [SAMPLE        ] produced= 312(+30)  processed[A: 129(+15)  B:  40(+ 0)  C: 130(+16)]
+[T+ 12.008s] [21:43:59.312] [SAMPLE        ] produced= 342(+30)  processed[A: 144(+15)  B:  40(+ 0)  C: 145(+15)]
+[T+ 13.009s] [21:44:00.312] [SAMPLE        ] produced= 372(+30)  processed[A: 159(+15)  B:  40(+ 0)  C: 160(+15)]
+[T+ 14.007s] [21:44:01.311] [PRODUCER      ] stopped. 402 items accepted into the MergeHub.
+[T+ 14.007s] [21:44:01.311] [HARNESS       ] >>> settling (waiting 2.0s)
+[T+ 14.009s] [21:44:01.313] [SAMPLE        ] produced= 402(+30)  processed[A: 174(+15)  B:  40(+ 0)  C: 175(+15)]
+[T+ 15.009s] [21:44:02.313] [SAMPLE        ] produced= 402(+ 0)  processed[A: 175(+ 1)  B:  40(+ 0)  C: 175(+ 0)]
+
+--- REPORT :: Scenario 6 -- baseline, abrupt death with a backlog ----------------------------------
+  Produced (accepted into MergeHub) : 402
+  Processed (all consumer sinks)    : 390
+  LOST                              : 12
+
+  consumer    link-emitted  arrived  processed  hb-injected  hb-received
+  A                    175      175        175            0            0
+  B                     43       41         40            0            0
+  C                    175      175        175            0            0
+
+  Element-loss breakdown:
+    -    3 lost AFTER leaving the hub on link[B] (in the KeepAlive/IdleTimeout/StreamRef path or the consumer's buffers): 123,126,129
+    -    9 never left the hub (dropped from a PartitionHub per-consumer queue on deregistration, or still queued at shutdown): 132,135,138,141,144,147,150,153,156
+
+  Partitioner input check: 402 Work items, 0 Heartbeats (PASS -- heartbeats never crossed the partitioner)
+
+  PartitionHub registered-consumer count timeline (read straight out of the partitioner's `size` arg):
+    T+  0.005s -> 3 consumers
+    T+  6.007s -> 2 consumers
+
+  Hub-side link terminations:
+    T+  6.007s link[B] failed=True :: Akka.Streams.RemoteStreamRefActorTerminatedException: "Remote target receiver of data terminated. Local stream terminating, message loss (on remote side) may have happened."
+
+  Consumer-side stream terminations:
+    T+  6.007s consumer[B] failed=True :: Akka.Streams.AbruptStageTerminationException: "GraphStage Akka.Streams.Implementation.Fusing.TerminationWatcher`1+Logic[HubProto.Work] terminated abruptly, caused by for example materializer or actor system termination."
+
+  Producer worst backpressure stall: 0.639s (Work#162, offered at T+5.368s)
+
+  B was killed at T+6.006s while backlogged
+  Hub-side link[B] died at T+6.007s => 0.000s after the event
+  PartitionHub slot freed (count -> 2) at T+6.007s => 0.001s after the event
+[T+ 16.009s] [21:44:03.312] [C/A           ] actor PostStop
+[T+ 16.009s] [21:44:03.312] [HUB/LINK-DEAD ] link[C] FAILED at T+16.009s :: Akka.Streams.AbruptStageTerminationException: "GraphStage Akka.Streams.Implementation.Fusing.TerminationWatcher`1+Logic[HubProto.IHubEnvelope] terminated abruptly, caused by for example materializer or actor system termination."
+[T+ 16.009s] [21:44:03.312] [C/C           ] actor PostStop
+[T+ 16.009s] [21:44:03.312] [C/C/DEAD      ] consumer stream FAILED at T+16.009s :: Akka.Streams.AbruptStageTerminationException: "GraphStage Akka.Streams.Implementation.Fusing.TerminationWatcher`1+Logic[HubProto.Work] terminated abruptly, caused by for example materializer or actor system termination."
+[T+ 16.009s] [21:44:03.312] [C/A/DEAD      ] consumer stream FAILED at T+16.009s :: Akka.Streams.AbruptStageTerminationException: "GraphStage Akka.Streams.Implementation.Fusing.TerminationWatcher`1+Logic[HubProto.Work] terminated abruptly, caused by for example materializer or actor system termination."
+[T+ 16.009s] [21:44:03.312] [HUB/LINK-DEAD ] link[A] FAILED at T+16.009s :: Akka.Streams.AbruptStageTerminationException: "GraphStage Akka.Streams.Implementation.Fusing.TerminationWatcher`1+Logic[HubProto.IHubEnvelope] terminated abruptly, caused by for example materializer or actor system termination."
+
+====================================================================================================
+SCENARIO 7 -- THE FIX, WITH PartitionHub bufferSize = 32 (4x scenario 3)
+Identical to scenario 3 apart from the hub buffer. Question: does the number of elements
+blackholed-and-then-dropped on reap scale with bufferSize? The customer is on the 256
+default, so this determines the real-world blast radius of a single reap.
+====================================================================================================
+[T+  0.002s] [21:44:03.316] [HUB           ] MergeHub->PartitionHub materialized. mode=Fixed mergeHubPerProducerBuffer=4 partitionHubBuffer=32 (AGGREGATE across all consumers) startAfterNrOfConsumers=3
+[T+  0.002s] [21:44:03.316] [HUB           ] Per-link liveness: KeepAlive=2s -> IdleTimeout=5s (both AFTER the PartitionHub)
+[T+  0.003s] [21:44:03.317] [C/A           ] requested a stream from the hub
+[T+  0.003s] [21:44:03.317] [HUB           ] materialized per-consumer link for A at T+0.003s
+[T+  0.003s] [21:44:03.317] [C/A           ] received SourceRef from hub, materializing consumer-side stream
+[T+  0.003s] [21:44:03.317] [C/B           ] requested a stream from the hub
+[T+  0.004s] [21:44:03.317] [HUB           ] materialized per-consumer link for B at T+0.003s
+[T+  0.004s] [21:44:03.317] [C/B           ] received SourceRef from hub, materializing consumer-side stream
+[T+  0.004s] [21:44:03.318] [C/C           ] requested a stream from the hub
+[T+  0.004s] [21:44:03.318] [HARNESS       ] consumer A is attached (1/3)
+[T+  0.004s] [21:44:03.318] [HARNESS       ] consumer B is attached (2/3)
+[T+  0.004s] [21:44:03.318] [HUB           ] materialized per-consumer link for C at T+0.004s
+[T+  0.004s] [21:44:03.318] [C/C           ] received SourceRef from hub, materializing consumer-side stream
+[T+  0.008s] [21:44:03.321] [HARNESS       ] consumer C is attached (3/3)
+[T+  0.008s] [21:44:03.321] [HARNESS       ] all consumers attached
+[T+  0.008s] [21:44:03.322] [PRODUCER      ] attached to MergeHub, target rate = 30 items/sec
+[T+  0.008s] [21:44:03.322] [HARNESS       ] >>> steady state with 3 healthy consumers (waiting 4.0s)
+[T+  0.008s] [21:44:03.322] [HUB/PARTITION ] *** PartitionHub registered-consumer count is now 3 (was -1) ***
+[T+  1.008s] [21:44:04.322] [SAMPLE        ] produced=  31(+31)  processed[A:  10(+10)  B:  10(+10)  C:   9(+ 9)]
+[T+  2.009s] [21:44:05.323] [SAMPLE        ] produced=  61(+30)  processed[A:  20(+10)  B:  20(+10)  C:  19(+10)]
+[T+  3.009s] [21:44:06.323] [SAMPLE        ] produced=  91(+30)  processed[A:  30(+10)  B:  30(+10)  C:  29(+10)]
+[T+  4.009s] [21:44:07.322] [HARNESS       ] *** ZOMBIFYING consumer B at T+4.009s ***
+[T+  4.009s] [21:44:07.322] [HARNESS       ] >>> waiting for the reap (waiting 12.0s)
+[T+  4.009s] [21:44:07.322] [C/B           ] ### GATE CLOSED -- sink stops completing work. Actor is still alive, stream is still materialized. This is the ZOMBIE. ###
+[T+  4.010s] [21:44:07.323] [SAMPLE        ] produced= 121(+30)  processed[A:  40(+10)  B:  40(+10)  C:  40(+11)]
+[T+  5.009s] [21:44:08.323] [SAMPLE        ] produced= 151(+30)  processed[A:  50(+10)  B:  40(+ 0)  C:  50(+10)]
+[T+  6.010s] [21:44:09.324] [SAMPLE        ] produced= 181(+30)  processed[A:  60(+10)  B:  40(+ 0)  C:  60(+10)]
+[T+  7.010s] [21:44:10.324] [SAMPLE        ] produced= 211(+30)  processed[A:  70(+10)  B:  40(+ 0)  C:  70(+10)]
+[T+  8.010s] [21:44:11.323] [SAMPLE        ] produced= 234(+23)  processed[A:  77(+ 7)  B:  40(+ 0)  C:  76(+ 6)]
+[T+  8.824s] [21:44:12.138] [PRODUCER/STALL] !!! offer of Work#236 has been blocked for >1s -- the hub is not accepting work !!!
+[T+  9.009s] [21:44:12.323] [SAMPLE        ] produced= 234(+ 0)  processed[A:  77(+ 0)  B:  40(+ 0)  C:  76(+ 0)]
+[T+  9.314s] [21:44:12.627] [HUB/LINK-DEAD ] link[B] FAILED at T+9.314s :: System.TimeoutException: "No elements passed in the last 00:00:05."
+[T+  9.314s] [21:44:12.627] [HUB/PARTITION ] *** PartitionHub registered-consumer count is now 2 (was 3) ***
+[WARNING][08/10/2026 21:44:12.627Z][Thread 0015][SourceShape`1([] [SourceRef.out])(akka://s7-fixed-bigbuffer/user/consumer-B/StreamSupervisor-33)] [SourceRef-1] The remote stream has failed, failing (reason: System.TimeoutException: No elements passed in the last 00:00:05.)
+[T+  9.314s] [21:44:12.627] [C/B/DEAD      ] consumer stream FAILED at T+9.314s :: Akka.Streams.RemoteStreamRefActorTerminatedException: "Remote stream (akka://s7-fixed-bigbuffer/user/hub/StreamSupervisor-31/$$b) failed, reason: System.TimeoutException: No elements passed in the last 00:00:05."
+[T+  9.314s] [21:44:12.627] [PRODUCER/STALL] offer of Work#236 finally accepted after 1.491s of backpressure
+[T+ 10.010s] [21:44:13.324] [SAMPLE        ] produced= 256(+22)  processed[A:  90(+13)  B:  40(+ 0)  C:  88(+12)]
+[T+ 11.010s] [21:44:14.324] [SAMPLE        ] produced= 287(+31)  processed[A: 105(+15)  B:  40(+ 0)  C: 103(+15)]
+[T+ 12.010s] [21:44:15.324] [SAMPLE        ] produced= 317(+30)  processed[A: 120(+15)  B:  40(+ 0)  C: 118(+15)]
+[T+ 13.011s] [21:44:16.324] [SAMPLE        ] produced= 347(+30)  processed[A: 135(+15)  B:  40(+ 0)  C: 133(+15)]
+[T+ 14.011s] [21:44:17.324] [SAMPLE        ] produced= 377(+30)  processed[A: 150(+15)  B:  40(+ 0)  C: 148(+15)]
+[T+ 15.011s] [21:44:18.324] [SAMPLE        ] produced= 407(+30)  processed[A: 165(+15)  B:  40(+ 0)  C: 163(+15)]
+[T+ 16.009s] [21:44:19.322] [PRODUCER      ] stopped. 437 items accepted into the MergeHub.
+[T+ 16.009s] [21:44:19.322] [HARNESS       ] >>> settling (waiting 2.0s)
+[T+ 16.011s] [21:44:19.324] [SAMPLE        ] produced= 437(+30)  processed[A: 180(+15)  B:  40(+ 0)  C: 178(+15)]
+[T+ 17.011s] [21:44:20.325] [SAMPLE        ] produced= 437(+ 0)  processed[A: 181(+ 1)  B:  40(+ 0)  C: 179(+ 1)]
+[T+ 17.974s] [21:44:21.287] [HUB/KEEPALIVE ] injected Heartbeat into link[C]
+[T+ 17.974s] [21:44:21.287] [C/C           ] <3 heartbeat received (dropped before the sink)
+[T+ 18.004s] [21:44:21.317] [HUB/KEEPALIVE ] injected Heartbeat into link[A]
+[T+ 18.004s] [21:44:21.317] [C/A           ] <3 heartbeat received (dropped before the sink)
+
+--- REPORT :: Scenario 7 -- fixed pipeline, zombie, PartitionHub bufferSize=32 ---------------------
+  Produced (accepted into MergeHub) : 437
+  Processed (all consumer sinks)    : 400
+  LOST                              : 37
+
+  consumer    link-emitted  arrived  processed  hb-injected  hb-received
+  A                    181      181        181            1            1
+  B                     44       41         40            0            0
+  C                    179      179        179            1            1
+
+  Element-loss breakdown:
+    -    4 lost AFTER leaving the hub on link[B] (in the KeepAlive/IdleTimeout/StreamRef path or the consumer's buffers): 122,125,128,131
+    -   33 never left the hub (dropped from a PartitionHub per-consumer queue on deregistration, or still queued at shutdown): 134,137,140,143,146,149,152,155,158,161,164,167,170,173,176,179,182,185,188,191, ... (+13 more)
+
+  Partitioner input check: 437 Work items, 0 Heartbeats (PASS -- heartbeats never crossed the partitioner)
+
+  PartitionHub registered-consumer count timeline (read straight out of the partitioner's `size` arg):
+    T+  0.008s -> 3 consumers
+    T+  9.314s -> 2 consumers
+
+  Hub-side link terminations:
+    T+  9.314s link[B] failed=True :: System.TimeoutException: "No elements passed in the last 00:00:05."
+
+  Consumer-side stream terminations:
+    T+  9.314s consumer[B] failed=True :: Akka.Streams.RemoteStreamRefActorTerminatedException: "Remote stream (akka://s7-fixed-bigbuffer/user/hub/StreamSupervisor-31/$$b) failed, reason: System.TimeoutException: No elements passed in the last 00:00:05."
+
+  Producer worst backpressure stall: 1.491s (Work#236, offered at T+7.823s)
+
+  PartitionHub bufferSize for this run: 32 (scenario 3 used 8)
+  Hub-side link[B] died at T+9.314s => 5.305s after the event
+  PartitionHub slot freed (count -> 2) at T+9.314s => 5.305s after the event
+[T+ 18.011s] [21:44:21.325] [C/B           ] actor PostStop
+[T+ 18.011s] [21:44:21.325] [C/A           ] actor PostStop
+[T+ 18.011s] [21:44:21.325] [C/A/DEAD      ] consumer stream FAILED at T+18.011s :: Akka.Streams.AbruptStageTerminationException: "GraphStage Akka.Streams.Implementation.Fusing.TerminationWatcher`1+Logic[HubProto.Work] terminated abruptly, caused by for example materializer or actor system termination."
+[T+ 18.011s] [21:44:21.325] [HUB/LINK-DEAD ] link[C] FAILED at T+18.011s :: Akka.Streams.AbruptStageTerminationException: "GraphStage Akka.Streams.Implementation.Fusing.TerminationWatcher`1+Logic[HubProto.IHubEnvelope] terminated abruptly, caused by for example materializer or actor system termination."
+[T+ 18.011s] [21:44:21.325] [C/C/DEAD      ] consumer stream FAILED at T+18.011s :: Akka.Streams.AbruptStageTerminationException: "GraphStage Akka.Streams.Implementation.Fusing.TerminationWatcher`1+Logic[HubProto.Work] terminated abruptly, caused by for example materializer or actor system termination."
+[T+ 18.011s] [21:44:21.325] [HUB/LINK-DEAD ] link[A] FAILED at T+18.011s :: Akka.Streams.AbruptStageTerminationException: "GraphStage Akka.Streams.Implementation.Fusing.TerminationWatcher`1+Logic[HubProto.IHubEnvelope] terminated abruptly, caused by for example materializer or actor system termination."
+[T+ 18.011s] [21:44:21.325] [C/C           ] actor PostStop
+
+====================================================================================================
+SCENARIO 8 -- THE FIX + A QUEUE-AWARE PARTITIONER
+PartitionHub.StatefulSink with a partitioner that consults IConsumerInfo.QueueSize and
+skips any consumer whose queue is backing up. Question: do the healthy consumers keep
+getting work during the ~5s window before IdleTimeout reaps the zombie?
+====================================================================================================
+[T+  0.005s] [21:44:21.333] [HUB           ] MergeHub->PartitionHub materialized. mode=Fixed mergeHubPerProducerBuffer=4 partitionHubBuffer=8 (AGGREGATE across all consumers) startAfterNrOfConsumers=3
+[T+  0.005s] [21:44:21.333] [HUB           ] Per-link liveness: KeepAlive=2s -> IdleTimeout=5s (both AFTER the PartitionHub)
+[T+  0.006s] [21:44:21.333] [C/A           ] requested a stream from the hub
+[T+  0.006s] [21:44:21.334] [HUB           ] materialized per-consumer link for A at T+0.006s
+[T+  0.006s] [21:44:21.334] [C/A           ] received SourceRef from hub, materializing consumer-side stream
+[T+  0.006s] [21:44:21.334] [C/B           ] requested a stream from the hub
+[T+  0.007s] [21:44:21.334] [HUB           ] materialized per-consumer link for B at T+0.007s
+[T+  0.007s] [21:44:21.334] [C/B           ] received SourceRef from hub, materializing consumer-side stream
+[T+  0.007s] [21:44:21.335] [HARNESS       ] consumer A is attached (1/3)
+[T+  0.007s] [21:44:21.335] [HARNESS       ] consumer B is attached (2/3)
+[T+  0.007s] [21:44:21.335] [C/C           ] requested a stream from the hub
+[T+  0.008s] [21:44:21.335] [HUB           ] materialized per-consumer link for C at T+0.007s
+[T+  0.008s] [21:44:21.335] [C/C           ] received SourceRef from hub, materializing consumer-side stream
+[T+  0.008s] [21:44:21.336] [HARNESS       ] consumer C is attached (3/3)
+[T+  0.008s] [21:44:21.336] [HARNESS       ] all consumers attached
+[T+  0.009s] [21:44:21.336] [PRODUCER      ] attached to MergeHub, target rate = 30 items/sec
+[T+  0.009s] [21:44:21.336] [HARNESS       ] >>> steady state with 3 healthy consumers (waiting 4.0s)
+[T+  0.009s] [21:44:21.337] [HUB/PARTITION ] *** PartitionHub registered-consumer count is now 3 (was -1) ***
+[T+  1.008s] [21:44:22.336] [SAMPLE        ] produced=  31(+31)  processed[A:  10(+10)  B:  10(+10)  C:   9(+ 9)]
+[T+  2.009s] [21:44:23.337] [SAMPLE        ] produced=  61(+30)  processed[A:  20(+10)  B:  20(+10)  C:  19(+10)]
+[T+  3.008s] [21:44:24.336] [SAMPLE        ] produced=  91(+30)  processed[A:  30(+10)  B:  30(+10)  C:  29(+10)]
+[T+  4.008s] [21:44:25.336] [SAMPLE        ] produced= 121(+30)  processed[A:  40(+10)  B:  40(+10)  C:  40(+11)]
+[T+  4.008s] [21:44:25.336] [HARNESS       ] *** ZOMBIFYING consumer B at T+4.008s ***
+[T+  4.008s] [21:44:25.336] [HARNESS       ] >>> do A and C keep working through the detection window? (waiting 12.0s)
+[T+  4.008s] [21:44:25.336] [C/B           ] ### GATE CLOSED -- sink stops completing work. Actor is still alive, stream is still materialized. This is the ZOMBIE. ###
+[T+  4.726s] [21:44:26.053] [HUB/PARTITION ] *** partitioner started SKIPPING a backed-up consumer (queue depth > 2) -- routing around it ***
+[T+  5.009s] [21:44:26.337] [SAMPLE        ] produced= 151(+30)  processed[A:  52(+12)  B:  40(+ 0)  C:  51(+11)]
+[T+  6.010s] [21:44:27.338] [SAMPLE        ] produced= 181(+30)  processed[A:  67(+15)  B:  40(+ 0)  C:  66(+15)]
+[T+  7.011s] [21:44:28.338] [SAMPLE        ] produced= 211(+30)  processed[A:  81(+14)  B:  40(+ 0)  C:  81(+15)]
+[T+  8.011s] [21:44:29.339] [SAMPLE        ] produced= 241(+30)  processed[A:  97(+16)  B:  40(+ 0)  C:  96(+15)]
+[T+  9.012s] [21:44:30.339] [SAMPLE        ] produced= 271(+30)  processed[A: 112(+15)  B:  40(+ 0)  C: 111(+15)]
+[T+  9.317s] [21:44:30.644] [HUB/LINK-DEAD ] link[B] FAILED at T+9.317s :: System.TimeoutException: "No elements passed in the last 00:00:05."
+[T+  9.317s] [21:44:30.645] [C/B/DEAD      ] consumer stream FAILED at T+9.317s :: Akka.Streams.RemoteStreamRefActorTerminatedException: "Remote stream (akka://s8-fixed-queueaware/user/hub/StreamSupervisor-36/$$b) failed, reason: System.TimeoutException: No elements passed in the last 00:00:05."
+[WARNING][08/10/2026 21:44:30.644Z][Thread 0011][SourceShape`1([] [SourceRef.out])(akka://s8-fixed-queueaware/user/consumer-B/StreamSupervisor-38)] [SourceRef-1] The remote stream has failed, failing (reason: System.TimeoutException: No elements passed in the last 00:00:05.)
+[T+  9.326s] [21:44:30.653] [HUB/PARTITION ] *** PartitionHub registered-consumer count is now 2 (was 3) ***
+[T+ 10.012s] [21:44:31.339] [SAMPLE        ] produced= 301(+30)  processed[A: 127(+15)  B:  40(+ 0)  C: 126(+15)]
+[T+ 11.011s] [21:44:32.339] [SAMPLE        ] produced= 331(+30)  processed[A: 142(+15)  B:  40(+ 0)  C: 141(+15)]
+[T+ 12.012s] [21:44:33.339] [SAMPLE        ] produced= 361(+30)  processed[A: 157(+15)  B:  40(+ 0)  C: 156(+15)]
+[T+ 13.012s] [21:44:34.339] [SAMPLE        ] produced= 391(+30)  processed[A: 172(+15)  B:  40(+ 0)  C: 171(+15)]
+[T+ 14.012s] [21:44:35.340] [SAMPLE        ] produced= 421(+30)  processed[A: 187(+15)  B:  40(+ 0)  C: 186(+15)]
+[T+ 15.013s] [21:44:36.341] [SAMPLE        ] produced= 451(+30)  processed[A: 202(+15)  B:  40(+ 0)  C: 201(+15)]
+[T+ 16.010s] [21:44:37.338] [PRODUCER      ] stopped. 481 items accepted into the MergeHub.
+[T+ 16.010s] [21:44:37.338] [HARNESS       ] >>> settling (waiting 2.0s)
+[T+ 16.014s] [21:44:37.341] [SAMPLE        ] produced= 481(+30)  processed[A: 217(+15)  B:  40(+ 0)  C: 216(+15)]
+[T+ 17.014s] [21:44:38.342] [SAMPLE        ] produced= 481(+ 0)  processed[A: 217(+ 0)  B:  40(+ 0)  C: 217(+ 1)]
+[T+ 17.966s] [21:44:39.293] [HUB/KEEPALIVE ] injected Heartbeat into link[A]
+[T+ 17.966s] [21:44:39.293] [C/A           ] <3 heartbeat received (dropped before the sink)
+[T+ 18.006s] [21:44:39.333] [HUB/KEEPALIVE ] injected Heartbeat into link[C]
+[T+ 18.006s] [21:44:39.333] [C/C           ] <3 heartbeat received (dropped before the sink)
+
+--- REPORT :: Scenario 8 -- fixed pipeline + queue-aware partitioner, zombie -----------------------
+  Produced (accepted into MergeHub) : 481
+  Processed (all consumer sinks)    : 474
+  LOST                              : 7
+
+  consumer    link-emitted  arrived  processed  hb-injected  hb-received
+  A                    217      217        217            1            1
+  B                     44       41         40            0            0
+  C                    217      217        217            1            1
+
+  Element-loss breakdown:
+    -    4 lost AFTER leaving the hub on link[B] (in the KeepAlive/IdleTimeout/StreamRef path or the consumer's buffers): 122,125,128,131
+    -    3 never left the hub (dropped from a PartitionHub per-consumer queue on deregistration, or still queued at shutdown): 134,137,140
+
+  Partitioner input check: 481 Work items, 0 Heartbeats (PASS -- heartbeats never crossed the partitioner)
+  Queue-aware partitioner: 69 skips of a backed-up consumer, 0 elements with nowhere good to go
+
+  PartitionHub registered-consumer count timeline (read straight out of the partitioner's `size` arg):
+    T+  0.009s -> 3 consumers
+    T+  9.326s -> 2 consumers
+
+  Hub-side link terminations:
+    T+  9.317s link[B] failed=True :: System.TimeoutException: "No elements passed in the last 00:00:05."
+
+  Consumer-side stream terminations:
+    T+  9.317s consumer[B] failed=True :: Akka.Streams.RemoteStreamRefActorTerminatedException: "Remote stream (akka://s8-fixed-queueaware/user/hub/StreamSupervisor-36/$$b) failed, reason: System.TimeoutException: No elements passed in the last 00:00:05."
+
+  Producer worst backpressure stall: 0.000s (Work#175, offered at T+5.790s)
+
+  Consumer B zombified at T+4.008s
+  A+C processed during the 12s after zombify: 353 (scenario 3, plain round-robin, is the comparison point)
+  Hub-side link[B] died at T+9.317s => 5.308s after the event
+  PartitionHub slot freed (count -> 2) at T+9.326s => 5.317s after the event
+[T+ 18.011s] [21:44:39.339] [C/A           ] actor PostStop
+[T+ 18.011s] [21:44:39.339] [C/B           ] actor PostStop
+[T+ 18.011s] [21:44:39.339] [C/A/DEAD      ] consumer stream FAILED at T+18.011s :: Akka.Streams.AbruptStageTerminationException: "GraphStage Akka.Streams.Implementation.Fusing.TerminationWatcher`1+Logic[HubProto.Work] terminated abruptly, caused by for example materializer or actor system termination."
+[T+ 18.011s] [21:44:39.339] [C/C/DEAD      ] consumer stream FAILED at T+18.011s :: Akka.Streams.AbruptStageTerminationException: "GraphStage Akka.Streams.Implementation.Fusing.TerminationWatcher`1+Logic[HubProto.Work] terminated abruptly, caused by for example materializer or actor system termination."
+[T+ 18.011s] [21:44:39.339] [HUB/LINK-DEAD ] link[C] FAILED at T+18.011s :: Akka.Streams.AbruptStageTerminationException: "GraphStage Akka.Streams.Implementation.Fusing.TerminationWatcher`1+Logic[HubProto.IHubEnvelope] terminated abruptly, caused by for example materializer or actor system termination."
+[T+ 18.011s] [21:44:39.339] [C/C           ] actor PostStop
+[T+ 18.011s] [21:44:39.339] [HUB/LINK-DEAD ] link[A] FAILED at T+18.011s :: Akka.Streams.AbruptStageTerminationException: "GraphStage Akka.Streams.Implementation.Fusing.TerminationWatcher`1+Logic[HubProto.IHubEnvelope] terminated abruptly, caused by for example materializer or actor system termination."
+
+All requested scenarios complete.
