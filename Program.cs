@@ -16,7 +16,7 @@ var hub = Source.From(Enumerable.Range(1, 40))
 
 Task Consume(string name, bool zombie) => hub
     .Select(w => (IHubEnvelope)w)
-    .KeepAlive(TimeSpan.FromSeconds(2), () => (IHubEnvelope)Heartbeat.Instance)
+    .KeepAlive(TimeSpan.FromSeconds(2), () => (IHubEnvelope)new Heartbeat())
     .IdleTimeout(TimeSpan.FromSeconds(5))
     .SelectAsync(1, e => zombie ? new TaskCompletionSource<IHubEnvelope>().Task : Task.FromResult(e))
     .Where(e => e is not Heartbeat)
@@ -30,7 +30,4 @@ interface IHubEnvelope;
 
 record Work(int N) : IHubEnvelope;
 
-record Heartbeat : IHubEnvelope
-{
-    public static readonly Heartbeat Instance = new();
-}
+record Heartbeat : IHubEnvelope;
