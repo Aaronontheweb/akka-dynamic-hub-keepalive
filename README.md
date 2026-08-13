@@ -1,25 +1,27 @@
 # Akka.Streams hub keep-alive demo
 
-Detecting dead ("zombie") consumers on a `PartitionHub` with a per-link `KeepAlive` + `IdleTimeout`
-pair placed after the hub. The whole demo is one file: [Program.cs](Program.cs).
+A `PartitionHub` consumer that dies without completing its stream keeps its slot forever - the
+hub cannot tell "dead" from "idle". The fix is one stage pair on each link: `KeepAlive` +
+`IdleTimeout`. A healthy link always carries heartbeats, so 5 seconds of silence proves the
+consumer is dead.
+
+The whole demo is 35 lines: [Program.cs](Program.cs).
 
 ```bash
 dotnet run --project .
 ```
 
-What it shows, in about 15 seconds of output:
+What the output shows:
 
-1. Three consumers round-robin a wave of work. One goes zombie - it stops pulling but its
-   stream never completes, which is exactly what a dead remote peer looks like when nothing
-   delivers a termination signal.
-2. Five seconds of silence later the zombie's `IdleTimeout` reaps it and the `PartitionHub`
-   frees its slot. Silence proves death, because a healthy link always carries heartbeats.
-3. During a quiet gap the survivors idle on heartbeats and are never reaped.
-4. A second wave of work round-robins across the two survivors - the hub healed itself.
+1. Two consumers split the work: A gets even numbers, B gets odd. B wedges immediately
+   and never completes its stream.
+2. After 5 seconds B's `IdleTimeout` fires (`No elements passed in the last 00:00:05`)
+   and the hub frees its slot.
+3. From then on A receives all the work, odd numbers included. The hub healed itself.
+   B's queued items were dropped, not redistributed.
 
-The stage order is the design: `PartitionHub` -> `KeepAlive` -> `IdleTimeout` -> (in production,
-a `SourceRef` crossing the network here) -> a `Where` filter dropping the heartbeat sentinel on
-the consumer side.
+In production the pipeline crosses the network as a `SourceRef` between the `IdleTimeout`
+and the consumer. The stage order and the behavior are the same.
 
 ## The full experiment
 
