@@ -14,16 +14,20 @@ var hub = Source.From(Enumerable.Range(1, 40))
     .Select(n => new Work(n))
     .RunWith(PartitionHub.Sink<Work>((size, w) => w.N % size, startAfterNrOfConsumers: 2, bufferSize: 8), mat);
 
-Task Consume(string name, bool zombie) => hub
+Task Consume(string name, int wedgeAfter) => hub
     .Select(w => (IHubEnvelope)w)
     .KeepAlive(TimeSpan.FromSeconds(2), () => (IHubEnvelope)new Heartbeat())
     .IdleTimeout(TimeSpan.FromSeconds(5))
-    .SelectAsync(1, e => zombie ? new TaskCompletionSource<IHubEnvelope>().Task : Task.FromResult(e))
+    .SelectAsync(1, e => e is Work && --wedgeAfter < 0
+        ? new TaskCompletionSource<IHubEnvelope>().Task // wedged: stops pulling, never completes
+        : Task.FromResult(e))
     .Where(e => e is not Heartbeat)
     .RunForeach(e => Console.WriteLine($"[{name}] {e}"), mat)
     .ContinueWith(t => Console.WriteLine($"[{name}] {t.Exception?.InnerException?.Message ?? "done"}"));
 
-await Task.WhenAll(Consume("A", zombie: false), Consume("B", zombie: true));
+var wedgeAt = Random.Shared.Next(3, 10);
+Console.WriteLine($"[B] will wedge after {wedgeAt} items");
+await Task.WhenAll(Consume("A", int.MaxValue), Consume("B", wedgeAt));
 await system.Terminate();
 
 interface IHubEnvelope;

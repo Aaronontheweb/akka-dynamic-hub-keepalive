@@ -12,7 +12,8 @@ dotnet run
 
 What the output shows:
 
-1. Consumer A gets even numbers, consumer B gets odd. B wedges immediately.
+1. Consumer A gets even numbers, consumer B gets odd. B processes a few items, then
+   wedges at a random point.
 2. After 5 seconds B's `IdleTimeout` fires: `No elements passed in the last 00:00:05`.
 3. The hub frees B's slot and A receives all the remaining work.
 
