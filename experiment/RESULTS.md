@@ -1,7 +1,7 @@
 # DynamicProducerConsumerHub — prototype results
 
 Everything below is **observed**, not predicted. Full transcript:
-[`runs/all-scenarios.log`](runs/all-scenarios.log), reproducible with `dotnet run --project src/HubProto`.
+[`runs/all-scenarios.log`](runs/all-scenarios.log), reproducible with `dotnet run --project experiment/src/HubProto`.
 
 ## What was under test
 
