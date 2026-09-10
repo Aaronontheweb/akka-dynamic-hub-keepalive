@@ -1,13 +1,19 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <OutputType>Exe</OutputType>
-    <TargetFramework>net8.0</TargetFramework>
+    <TargetFramework>net10.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
   </PropertyGroup>
   <ItemGroup>
     <Compile Remove="experiment/**" />
     <None Remove="experiment/**" />
+    <Compile Remove="heartbeat-tests/**" />
+    <None Remove="heartbeat-tests/**" />
+    <Compile Remove="heartbeat-slowtest/**" />
+    <None Remove="heartbeat-slowtest/**" />
+    <Compile Remove="apidump/**" />
+    <None Remove="apidump/**" />
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="Akka.Streams" Version="1.5.70" />
