@@ -9,17 +9,24 @@ using Xunit.Abstractions;
 namespace HeartbeatTests;
 
 /// <summary>
-/// Empirical verification of the ticket-616 heartbeat POC fix.
+/// Empirical verification of the two-sided heartbeat POC fix.
 ///
-/// Baseline problem (single linear KeepAlive -> IdleTimeout -> slow consumer):
-/// KeepAlive heartbeat emission is DEMAND-GATED, so a slow-but-alive consumer's
-/// backpressure starves the heartbeat AND IdleTimeout fires a false positive.
+/// Shape under test (faithful to a cross-process deployment):
+///   PRODUCER side:  real data -> KeepAlive -> SourceRef  (KeepAlive rides OUTBOUND)
+///   CONSUMER side:  SourceRef -> IdleTimeout -> BroadcastHub split
+///                       - LIFELINE branch: always pulls, discards (keeps IdleTimeout fed)
+///                       - WORK branch: only Work to a processor that may backpressure
 ///
-/// Fix (single SourceRef, outer/inner split via BroadcastHub): the transport is
-/// materialized to a BroadcastHub. A LIFELINE branch always pulls (holds demand so
-/// the transport/IdleTimeout stays fed), while a WORK branch carries only Work and
-/// may backpressure freely. Buffer size is load-bearing: too small and the slow
-/// work branch backpressures the shared ring buffer and starves the lifeline.
+/// The guarantees this suite proves:
+///   (a) a slow-but-alive consumer SURVIVES: the consumer-side lifeline holds real,
+///       ongoing demand so KeepAlive always has a slot to emit a heartbeat into and
+///       IdleTimeout never falsely fires on wedged work.
+///   (b) a truly silent/dead downstream is STILL reclaimed: with no lifeline demand,
+///       nothing crosses IdleTimeout and the slot times out.
+///
+/// Buffer sizing is load-bearing: the BroadcastHub ring buffer must exceed the
+/// worst-case slow-work backlog, or the work branch backpressures the shared buffer
+/// and re-couples the lifeline (the small-buffer false-positive bug).
 /// </summary>
 public class HeartbeatTests : TestKit
 {
@@ -31,100 +38,99 @@ public class HeartbeatTests : TestKit
 
     protected override void Dispose(bool disposing) { _mat.Shutdown(); base.Dispose(disposing); }
 
-    /// <summary>A CancellationTokenSource that fires after a fixed delay so no async
-    /// TestKit expectation can hang the suite forever.</summary>
-    private static CancellationTokenSource NoHang(int ms = 8000)
-        => new CancellationTokenSource(TimeSpan.FromMilliseconds(ms));
+    /// <summary>A CancellationToken that fires after a fixed delay so no async TestKit
+    /// expectation (which defaults to blocking forever) can hang the suite.</summary>
+    private static CancellationToken NoHang(int ms = 8000)
+        => new CancellationTokenSource(TimeSpan.FromMilliseconds(ms)).Token;
 
-    [Fact]
-    public async Task Baseline_IdleTimeout_fires_on_slow_but_alive_consumer()
+    /// <summary>PRODUCER side: real data -> KeepAlive, materialized into a SourceRef.
+    /// Returns both the probe to push real data with and the ref handed to the peer.</summary>
+    private async Task<(TestPublisher.Probe<long> pub, ISourceRef<long> ref_)> ProducerWithRef(
+        TimeSpan keepAliveInterval)
     {
-        // Linear shape WITHOUT the split: heartbeat + work share one demand domain,
-        // so slow work starves the heartbeat and IdleTimeout fires a false positive.
-        var (pub, sub) = this.SourceProbe<long>()
-            .KeepAlive(TimeSpan.FromMilliseconds(100), () => Heartbeat)
-            .IdleTimeout(Idle)
-            .ToMaterialized(this.SinkProbe<long>(), Keep.Both)
+        // SourceProbe gives a probe-driven Source; materialize it together with the
+        // SourceRef so we can both feed real data and hand the ref to the "peer".
+        var source = this.SourceProbe<long>();
+        var (pub, refTask) = source
+            .KeepAlive(keepAliveInterval, () => Heartbeat)
+            .ToMaterialized(StreamRefs.SourceRef<long>(), Keep.Both)
             .Run(_mat);
-
-        sub.Request(1);
-        pub.SendNext(1L);
-        await sub.ExpectNextAsync(NoHang().Token); // drain whatever arrived first
-
-        // Backpressure: no further demand; upstream keeps "alive" but no element
-        // can cross IdleTimeout to reset its window.
-        pub.SendNext(2L); pub.SendNext(3L); pub.SendNext(4L);
-
-        using var cts = NoHang();
-        var err = await sub.ExpectErrorAsync(cts.Token);
-        Assert.NotNull(err); // slow-but-alive consumer was falsely killed
+        return (pub, await refTask);
     }
 
     [Fact]
-    public async Task BroadcastHub_adequate_buffer_survives_slow_but_alive_consumer()
+    public async Task Slow_but_alive_consumer_survives_via_lifeline()
     {
-        // KeepAlive -> IdleTimeout -> BroadcastHub (adequate buffer: 64).
-        // (pub, hubOut): feeding the transport via a probe; hubOut fans out to branches.
-        var (pub, hubOut) = this.SourceProbe<long>()
-            .KeepAlive(TimeSpan.FromMilliseconds(100), () => Heartbeat)
-            .IdleTimeout(Idle)
-            .ToMaterialized(BroadcastHub.Sink<long>(startAfterNrOfConsumers: 2, bufferSize: 64), Keep.Both)
-            .Run(_mat);
-        hubOut.To(Sink.Ignore<long>()).Run(_mat); // lifeline: always pulls and discards
+        // Two-sided setup: producer wraps real data KeepAlive into a SourceRef; the
+        // consumer guards the ref with IdleTimeout and BroadcastHub-splits it.
+        var (pub, ref_) = await ProducerWithRef(TimeSpan.FromMilliseconds(100));
 
-        var workCts2 = NoHang(15000);
+        var transport = ref_.Source.IdleTimeout(Idle);
+
+        // BroadcastHub with an ADEQUATE buffer (64): each subscriber gets independent
+        // demand on a shared ring buffer.
+        var hub = transport
+            .ToMaterialized(BroadcastHub.Sink<long>(startAfterNrOfConsumers: 2, bufferSize: 64), Keep.Right)
+            .Run(_mat);
+
+        // LIFELINE branch: always pulls and discards, holding real demand so KeepAlive
+        // keeps feeding IdleTimeout no matter how slow the work branch gets.
+        hub.To(Sink.Ignore<long>()).Run(_mat);
+
+        var workCts = new CancellationTokenSource(TimeSpan.FromMilliseconds(20000));
         var got = new System.Collections.Concurrent.ConcurrentQueue<long>();
-        var workTask2 = hubOut
+        var workTask = hub
             .SelectAsync(1, async n =>
             {
-                await Task.Delay(n >= 5 ? TimeSpan.FromMilliseconds(Idle.TotalMilliseconds * 2) : TimeSpan.FromMilliseconds(10), workCts2.Token);
+                // Work items 5+ take about 2x the idle timeout on purpose: a wedged
+                // work branch whose heartbeats would otherwise be starved.
+                var delay = n >= 5 ? TimeSpan.FromMilliseconds(Idle.TotalMilliseconds * 2)
+                                   : TimeSpan.FromMilliseconds(10);
+                await Task.Delay(delay, workCts.Token);
                 got.Enqueue(n);
                 return n;
             })
             .RunForeach(_ => { }, _mat);
 
-        // Feed work: items 1..10. The lifeline + work branches' demand propagates
-        // upstream through the BroadcastHub back to the transport, so SendNext is enough.
-        for (long i = 1; i <= 10; i++) { pub.SendNext(i); await Task.Delay(20); }
+        // Feed work. Demand propagation: lifeline + work demand flows upstream through
+        // the BroadcastHub, over the SourceRef, back to the producer's KeepAlive.
+        for (long i = 1; i <= 10; i++) { pub.SendNext(i); await Task.Delay(30); }
 
-        // Wait for the slow items (5+) to complete within a bounded window; if
-        // IdleTimeout fired on the transport, workTask2 would fault with the error.
+        // Give the slow items (5+) time to cross; if IdleTimeout had falsely fired on
+        // the transport, workTask would fault.
         await Task.Delay(TimeSpan.FromMilliseconds(Idle.TotalMilliseconds * 3));
 
-        // The work branch must still be running (transport NOT killed) and at least
-        // some items must have completed.
-        Assert.False(workTask2.IsFaulted, $"work branch faulted: {workTask2.Exception}");
+        Assert.False(workTask.IsFaulted, $"work branch faulted (IdleTimeout fired?): {workTask.Exception}");
         Assert.True(got.Count >= 1, $"expected work to flow, got {got.Count} items");
-        workCts2.Cancel();
-        try { await workTask2; } catch { /* cancelled cleanup */ }
+
+        workCts.Cancel();
+        try { await workTask; } catch { /* cancelled cleanup */ }
     }
 
     [Fact]
     public async Task Truly_silent_downstream_still_fires_IdleTimeout()
     {
-        // Even with the split, a consumer that goes fully silent (dead peer) with NO
-        // lifeline demand trips IdleTimeout -> the slot IS reclaimed. This proves the
-        // fix doesn't erase the dead-slot reclamation the mechanism exists for.
-        var (pub, sub) = this.SourceProbe<long>()
-            .KeepAlive(TimeSpan.FromMilliseconds(100), () => Heartbeat)
+        // Same two-sided setup, but the consumer has NO lifeline and stops demanding:
+        // KeepAlive wants to emit heartbeats, but with no downstream demand nothing
+        // crosses IdleTimeout, so the timeout counts down and fires -> slot reclaimed.
+        var (pub, ref_) = await ProducerWithRef(TimeSpan.FromMilliseconds(100));
+
+        var sub = ref_.Source
             .IdleTimeout(Idle)
-            .ToMaterialized(this.SinkProbe<long>(), Keep.Both)
+            .ToMaterialized(this.SinkProbe<long>(), Keep.Right)
             .Run(_mat);
 
-        // Establish a baseline element, then stop ALL demand from the sink.
+        // Establish a baseline element so the transport is live, then stop ALL demand.
         sub.Request(1);
         pub.SendNext(1L);
-        await sub.ExpectNextAsync(NoHang().Token);
-        // No further Request(receipt) — the sink holds no outstanding demand, and the
-        // source sends nothing further. No lifeline, so the transport has nothing fed.
+        await sub.ExpectNextAsync(NoHang());
 
-        // Even though KeepAlive tries to emit heartbeats, there's no demand to push
-        // them into, so IdleTimeout counts down and fires (nothing flowed).
-        // Cancel before feeding so we don't accidentally satisfy demand.
+        // No further Request: the sink holds zero outstanding demand, so the producer's
+        // heartbeats have no slot to cross into and IdleTimeout expires.
         pub.SendNext(2L);
 
-        using var cts = NoHang();
+        using var cts = new CancellationTokenSource(TimeSpan.FromMilliseconds(8000));
         var err = await sub.ExpectErrorAsync(cts.Token);
-        Assert.NotNull(err);
+        Assert.NotNull(err); // a dead/silent peer IS reclaimed -> timeout still fires
     }
 }
