@@ -1,11 +1,13 @@
 // ============================================================================
 // Distributed backpressuring keep-alive sample.
 //
-// The simple sample (../Program.cs) puts KeepAlive + IdleTimeout on the consumer
-// side of the hub. That couples liveness to demand: when the consumer is slow, it
-// backpressures the heartbeats too, so IdleTimeout can fire on a live-but-slow peer.
+// The simple sample (../simple-sample/Program.cs) puts KeepAlive + IdleTimeout on the
+// consumer, so IdleTimeout measures the consumer's own demand: it reclaims a wedged
+// consumer but says nothing about the producer.
 //
-// This variant decouples liveness from processing speed:
+// This variant moves KeepAlive to the producer and disintermediates the consumer's
+// demand with a buffer, so IdleTimeout is sustained by the producer's heartbeats and
+// measures the connection, not the consumer's speed:
 //
 //   PRODUCER:  data -> KeepAlive(heartbeat) -> SourceRef        (heartbeat rides OUTBOUND)
 //   CONSUMER:  SourceRef -> IdleTimeout -> Where(drop heartbeats)

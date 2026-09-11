@@ -4,12 +4,8 @@
     <TargetFramework>net8.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>SimpleSample</RootNamespace>
   </PropertyGroup>
-  <ItemGroup>
-    <!-- Sibling projects live in their own folders; keep them out of this project's glob. -->
-    <Compile Remove="experiment/**;backpressure-sample/**;backpressure-tests/**" />
-    <None Remove="experiment/**;backpressure-sample/**;backpressure-tests/**" />
-  </ItemGroup>
   <ItemGroup>
     <PackageReference Include="Akka.Streams" Version="1.5.70" />
   </ItemGroup>
